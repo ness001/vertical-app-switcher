@@ -95,20 +95,27 @@ namespace VerticalAppSwitcher
     {
         private readonly SwitcherOverlay overlay;
         private readonly GlobalHotKey hotKey;
+        private readonly ShortcutSettingsStore shortcutSettingsStore;
+        private ShortcutSettingsData shortcutSettings;
         private readonly XInputNavigationService controllerNavigation;
         private readonly AppStateStore stateStore;
         private readonly ClosedAppTracker closedAppTracker;
         private readonly NotifyIcon trayIcon;
         private readonly Icon appIcon;
         private readonly ContextMenuStrip trayMenu;
+        private readonly ToolStripMenuItem openItem;
         private readonly ToolStripMenuItem startWithWindowsItem;
         private System.Windows.Forms.Timer initialShowTimer;
+        private bool shortcutSetupVisible;
+        private string shortcutRegistrationError;
         private string pendingCloseKey;
         private DateTime pendingCloseUntilUtc = DateTime.MinValue;
         private bool disposed;
 
         public SwitcherApplicationContext(bool showImmediately)
         {
+            shortcutSettingsStore = new ShortcutSettingsStore();
+            shortcutSettings = shortcutSettingsStore.Load();
             stateStore = new AppStateStore();
             overlay = new SwitcherOverlay();
             overlay.ActivationFailed += OnActivationFailed;
@@ -118,12 +125,18 @@ namespace VerticalAppSwitcher
             overlay.ForceStopRequested += OnForceStopRequested;
 
             hotKey = new GlobalHotKey(
-                NativeMethods.ModWin | NativeMethods.ModNoRepeat,
-                NativeMethods.VirtualKeyOem3,
                 OnHotKeyPressed,
                 OnExternalShowRequested,
                 OnExternalExitRequested,
                 OnNavigationKeyPressed);
+            ShortcutDefinition configuredShortcut =
+                ShortcutDefinition.Find(shortcutSettings.ShortcutId);
+            if (!hotKey.TrySetShortcut(
+                    configuredShortcut,
+                    out shortcutRegistrationError))
+            {
+                DiagnosticLog.Write(shortcutRegistrationError);
+            }
 
             controllerNavigation = new XInputNavigationService();
             controllerNavigation.NavigationRequested +=
@@ -136,10 +149,14 @@ namespace VerticalAppSwitcher
 
             trayMenu = new ContextMenuStrip();
 
-            var openItem = new ToolStripMenuItem(
-                "Open switcher\tWin+` / Ctrl+Shift+Space");
+            openItem = new ToolStripMenuItem();
             openItem.Click += delegate { ShowSwitcher(); };
             trayMenu.Items.Add(openItem);
+
+            var shortcutSetupItem =
+                new ToolStripMenuItem("Set up shortcut...");
+            shortcutSetupItem.Click += delegate { ShowShortcutSetup(null); };
+            trayMenu.Items.Add(shortcutSetupItem);
 
             startWithWindowsItem = new ToolStripMenuItem("Start with Windows");
             startWithWindowsItem.Click += OnStartWithWindowsClick;
@@ -156,11 +173,11 @@ namespace VerticalAppSwitcher
             trayIcon = new NotifyIcon
             {
                 Icon = appIcon,
-                Text = "Vertical App Switcher - Win+` or Ctrl+Shift+Space",
                 ContextMenuStrip = trayMenu,
                 Visible = true
             };
             trayIcon.DoubleClick += delegate { ShowSwitcher(); };
+            UpdateShortcutText();
 
             string startupError;
             bool startupEnabled;
@@ -175,15 +192,29 @@ namespace VerticalAppSwitcher
                 ShowNotification("Startup setting unavailable", startupError, ToolTipIcon.Warning);
             }
 
-            ShowNotification(
-                "Vertical App Switcher is ready",
-                "Press Win+` or Ctrl+Shift+Space to open the app bar.",
-                ToolTipIcon.Info);
+            if (string.IsNullOrEmpty(shortcutRegistrationError))
+            {
+                ShowNotification(
+                    "Vertical App Switcher is ready",
+                    "Press "
+                        + hotKey.CurrentShortcut.DisplayText
+                        + " to open the app bar.",
+                    ToolTipIcon.Info);
+            }
+            else
+            {
+                ShowNotification(
+                    "Shortcut setup required",
+                    shortcutRegistrationError,
+                    ToolTipIcon.Warning);
+            }
 
             controllerNavigation.Start();
             closedAppTracker.Start();
 
-            if (showImmediately)
+            if (showImmediately
+                || !shortcutSettings.SetupCompleted
+                || !string.IsNullOrEmpty(shortcutRegistrationError))
             {
                 initialShowTimer = new System.Windows.Forms.Timer { Interval = 150 };
                 initialShowTimer.Tick += OnInitialShowTimerTick;
@@ -299,7 +330,107 @@ namespace VerticalAppSwitcher
             initialShowTimer.Stop();
             initialShowTimer.Dispose();
             initialShowTimer = null;
-            ShowSwitcher(true);
+            if (!shortcutSettings.SetupCompleted
+                || !string.IsNullOrEmpty(shortcutRegistrationError))
+            {
+                ShowShortcutSetup(shortcutRegistrationError);
+            }
+            else
+            {
+                ShowSwitcher(true);
+            }
+        }
+
+        private void ShowShortcutSetup(string initialStatus)
+        {
+            if (shortcutSetupVisible)
+            {
+                return;
+            }
+
+            shortcutSetupVisible = true;
+            if (overlay.Visible)
+            {
+                overlay.HandleNavigationKey(Keys.Escape);
+            }
+
+            try
+            {
+                ShortcutDefinition selectedShortcut =
+                    ShortcutDefinition.Find(shortcutSettings.ShortcutId)
+                    ?? ShortcutDefinition.Default;
+                using (var form = new ShortcutSetupForm(
+                    selectedShortcut,
+                    initialStatus,
+                    appIcon,
+                    ApplyShortcut))
+                {
+                    form.ShowDialog();
+                }
+            }
+            finally
+            {
+                shortcutSetupVisible = false;
+            }
+        }
+
+        private string ApplyShortcut(ShortcutDefinition shortcut)
+        {
+            ShortcutDefinition previousShortcut = hotKey.CurrentShortcut;
+            string registrationError;
+            if (!hotKey.TrySetShortcut(shortcut, out registrationError))
+            {
+                DiagnosticLog.Write(registrationError);
+                return registrationError;
+            }
+
+            var updatedSettings = new ShortcutSettingsData
+            {
+                ShortcutId = shortcut.Id,
+                SetupCompleted = true
+            };
+
+            try
+            {
+                shortcutSettingsStore.Save(updatedSettings);
+            }
+            catch (Exception exception)
+                when (exception is IOException
+                    || exception is UnauthorizedAccessException
+                    || exception is SecurityException
+                    || exception is SerializationException
+                    || exception is InvalidOperationException)
+            {
+                string rollbackError;
+                if (previousShortcut != null
+                    && !hotKey.TrySetShortcut(previousShortcut, out rollbackError))
+                {
+                    DiagnosticLog.Write(rollbackError);
+                }
+
+                string message =
+                    "The shortcut could not be saved: " + exception.Message;
+                DiagnosticLog.Write(message);
+                return message;
+            }
+
+            shortcutSettings = updatedSettings;
+            shortcutRegistrationError = null;
+            UpdateShortcutText();
+            ShowNotification(
+                "Shortcut updated",
+                "Press " + shortcut.DisplayText + " to open the app bar.",
+                ToolTipIcon.Info);
+            return null;
+        }
+
+        private void UpdateShortcutText()
+        {
+            ShortcutDefinition shortcut = hotKey.CurrentShortcut
+                ?? ShortcutDefinition.Find(shortcutSettings.ShortcutId)
+                ?? ShortcutDefinition.Default;
+            openItem.Text = "Open switcher\t" + shortcut.DisplayText;
+            trayIcon.Text = "Vertical App Switcher - " + shortcut.DisplayText;
         }
 
         private void ShowSwitcher()
@@ -604,20 +735,16 @@ namespace VerticalAppSwitcher
         private const int HomeKeyId = 8;
         private const int EndKeyId = 9;
         private const int ShiftedHotKeyId = 10;
-        private const int FallbackHotKeyId = 11;
         private const string WindowCaption = "VerticalAppSwitcherHotKey";
         private readonly Action pressed;
         private readonly Action showRequested;
         private readonly Action exitRequested;
         private readonly Action<Keys> navigationPressed;
-        private bool registered;
+        private ShortcutDefinition currentShortcut;
         private bool shiftedRegistered;
-        private bool fallbackRegistered;
         private bool navigationRegistered;
 
         public GlobalHotKey(
-            uint modifiers,
-            uint virtualKey,
             Action pressed,
             Action showRequested,
             Action exitRequested,
@@ -628,35 +755,69 @@ namespace VerticalAppSwitcher
             this.exitRequested = exitRequested;
             this.navigationPressed = navigationPressed;
             CreateHandle(new CreateParams { Caption = WindowCaption });
+        }
 
-            if (!NativeMethods.RegisterHotKey(Handle, HotKeyId, modifiers, virtualKey))
+        public ShortcutDefinition CurrentShortcut
+        {
+            get { return currentShortcut; }
+        }
+
+        public bool TrySetShortcut(
+            ShortcutDefinition shortcut,
+            out string error)
+        {
+            if (shortcut == null)
             {
-                int error = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
-                DestroyHandle();
-                throw new Win32Exception(
-                    error,
-                    "Could not register Win+`. Another application may already use it.");
+                throw new ArgumentNullException("shortcut");
             }
 
-            registered = true;
-            shiftedRegistered = TryRegisterOptionalHotKey(
-                ShiftedHotKeyId,
-                modifiers | NativeMethods.ModShift,
-                virtualKey,
-                "Win+Shift+`");
-            fallbackRegistered = TryRegisterOptionalHotKey(
-                FallbackHotKeyId,
-                NativeMethods.ModControl
-                    | NativeMethods.ModShift
-                    | NativeMethods.ModNoRepeat,
-                NativeMethods.VirtualKeySpace,
-                "Ctrl+Shift+Space");
+            error = null;
+            if (currentShortcut != null
+                && string.Equals(
+                    currentShortcut.Id,
+                    shortcut.Id,
+                    StringComparison.Ordinal))
+            {
+                return true;
+            }
 
+            ShortcutDefinition previousShortcut = currentShortcut;
+            UnregisterInvocationHotKeys();
+
+            if (!NativeMethods.RegisterHotKey(
+                    Handle,
+                    HotKeyId,
+                    shortcut.Modifiers,
+                    shortcut.VirtualKey))
+            {
+                int nativeError =
+                    System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+                error =
+                    shortcut.DisplayText
+                    + " is unavailable. Another application may already use it. "
+                    + new Win32Exception(nativeError).Message;
+
+                if (previousShortcut != null)
+                {
+                    string restoreError;
+                    if (!RegisterShortcut(previousShortcut, out restoreError))
+                    {
+                        error += " The previous shortcut also could not be restored: "
+                            + restoreError;
+                    }
+                }
+
+                return false;
+            }
+
+            currentShortcut = shortcut;
+            RegisterShiftedAliasIfNeeded(shortcut);
             DiagnosticLog.Write(
-                "Global shortcuts registered: Win+`"
-                + (shiftedRegistered ? ", Win+Shift+`" : string.Empty)
-                + (fallbackRegistered ? ", Ctrl+Shift+Space" : string.Empty)
+                "Global shortcut registered: "
+                + shortcut.DisplayText
+                + (shiftedRegistered ? " (plus Win + Shift + ` alias)" : string.Empty)
                 + ".");
+            return true;
         }
 
         public void SetNavigationEnabled(bool enabled)
@@ -715,26 +876,7 @@ namespace VerticalAppSwitcher
         public void Dispose()
         {
             UnregisterNavigationKeys();
-
-            if (registered)
-            {
-                UnregisterInvocationHotKey(HotKeyId, "Win+`");
-                registered = false;
-            }
-
-            if (shiftedRegistered)
-            {
-                UnregisterInvocationHotKey(ShiftedHotKeyId, "Win+Shift+`");
-                shiftedRegistered = false;
-            }
-
-            if (fallbackRegistered)
-            {
-                UnregisterInvocationHotKey(
-                    FallbackHotKeyId,
-                    "Ctrl+Shift+Space");
-                fallbackRegistered = false;
-            }
+            UnregisterInvocationHotKeys();
 
             if (Handle != IntPtr.Zero)
             {
@@ -747,8 +889,7 @@ namespace VerticalAppSwitcher
             int hotKeyId = message.WParam.ToInt32();
             if (message.Msg == NativeMethods.WmHotKey
                 && (hotKeyId == HotKeyId
-                    || hotKeyId == ShiftedHotKeyId
-                    || hotKeyId == FallbackHotKeyId))
+                    || hotKeyId == ShiftedHotKeyId))
             {
                 pressed();
             }
@@ -805,24 +946,65 @@ namespace VerticalAppSwitcher
             }
         }
 
-        private bool TryRegisterOptionalHotKey(
-            int id,
-            uint modifiers,
-            uint virtualKey,
-            string displayName)
+        private bool RegisterShortcut(
+            ShortcutDefinition shortcut,
+            out string error)
         {
-            if (NativeMethods.RegisterHotKey(Handle, id, modifiers, virtualKey))
+            if (!NativeMethods.RegisterHotKey(
+                    Handle,
+                    HotKeyId,
+                    shortcut.Modifiers,
+                    shortcut.VirtualKey))
             {
-                return true;
+                error = new Win32Exception(
+                    System.Runtime.InteropServices.Marshal.GetLastWin32Error()).Message;
+                return false;
             }
 
-            DiagnosticLog.Write(
-                "Optional shortcut "
-                + displayName
-                + " is unavailable: "
-                + new Win32Exception(
-                    System.Runtime.InteropServices.Marshal.GetLastWin32Error()).Message);
-            return false;
+            currentShortcut = shortcut;
+            RegisterShiftedAliasIfNeeded(shortcut);
+            error = null;
+            return true;
+        }
+
+        private void RegisterShiftedAliasIfNeeded(ShortcutDefinition shortcut)
+        {
+            if (!shortcut.RegisterShiftedAlias)
+            {
+                return;
+            }
+
+            shiftedRegistered = NativeMethods.RegisterHotKey(
+                Handle,
+                ShiftedHotKeyId,
+                shortcut.Modifiers | NativeMethods.ModShift,
+                shortcut.VirtualKey);
+            if (!shiftedRegistered)
+            {
+                DiagnosticLog.Write(
+                    "Optional shortcut Win + Shift + ` is unavailable: "
+                    + new Win32Exception(
+                        System.Runtime.InteropServices.Marshal.GetLastWin32Error()).Message);
+            }
+        }
+
+        private void UnregisterInvocationHotKeys()
+        {
+            if (currentShortcut != null)
+            {
+                UnregisterInvocationHotKey(
+                    HotKeyId,
+                    currentShortcut.DisplayText);
+                currentShortcut = null;
+            }
+
+            if (shiftedRegistered)
+            {
+                UnregisterInvocationHotKey(
+                    ShiftedHotKeyId,
+                    "Win + Shift + `");
+                shiftedRegistered = false;
+            }
         }
 
         private void UnregisterInvocationHotKey(int id, string displayName)

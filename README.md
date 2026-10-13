@@ -8,10 +8,8 @@ The current architecture and behavioral contract are documented in
 
 ## Features
 
-- Press **Win + Backtick** from anywhere to open the overlay.
-- **Ctrl + Shift + Space** is a fallback when a keyboard layout, gaming mode, or
-  Windows-key lock prevents the primary shortcut. **Win + Shift + Backtick**
-  is also accepted for layouts that require Shift to type a backtick.
+- Choose a global keyboard shortcut during first-run setup. The default is
+  **Win + Backtick**, with alternatives if another app already uses it.
 - Shows normal taskbar applications across all Windows virtual desktops,
   including minimized windows. Entries on an inactive desktop display a
   `DESKTOP` badge, and selecting one switches to its desktop.
@@ -94,10 +92,16 @@ bar, run:
 You can also enable **Start with Windows** from the switcher's notification-area
 menu.
 
+On first launch, the setup page asks you to choose the global shortcut that
+opens the app bar. Select **Save shortcut** to let the app verify that Windows
+can reserve it. If another program already uses that combination, choose one of
+the alternatives and try again. You can change it later from **Set up
+shortcut...** in the notification-area menu.
+
 ## Controls
 
-1. Press **Win + Backtick** whenever you want to open the app bar
-   again. Use **Ctrl + Shift + Space** if the Windows key is locked.
+1. Press your configured global shortcut whenever you want to open the app bar
+   again.
 2. Select an app:
    - Controller D-pad or left stick Up/Down navigates.
    - Controller `A` switches to the selected app.
@@ -117,10 +121,8 @@ menu.
 
 Only one copy runs at a time. Launching the executable again asks the existing
 copy to show its app bar. Automatic Windows startup uses background mode, so it
-does not interrupt sign-in. If another program already owns the required
-**Win + Backtick** shortcut, the switcher reports the conflict instead of
-running without a usable hotkey. Optional shortcut conflicts are logged while
-the remaining shortcuts continue to work.
+does not interrupt sign-in. If another program takes the configured shortcut,
+the switcher opens setup so you can choose a working alternative.
 
 Pinned applications appear first. All unpinned open applications remain ordered
 by latest use, not by usage frequency. Closed applications display a `RECENT`
@@ -138,6 +140,12 @@ Pins and recent history are stored in:
 
 ```text
 %LOCALAPPDATA%\VerticalAppSwitcher\state.json
+```
+
+The selected shortcut and first-run setup state are stored in:
+
+```text
+%LOCALAPPDATA%\VerticalAppSwitcher\settings.json
 ```
 
 ## Diagnostics

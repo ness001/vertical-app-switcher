@@ -1,7 +1,7 @@
 # Vertical App Switcher Design
 
 **Status:** Implemented current-state design<br>
-**Last updated:** 2026-10-12<br>
+**Last updated:** 2026-10-13<br>
 **Platform:** Windows 10/11<br>
 **UI framework:** C# Windows Forms on .NET 10 LTS<br>
 **Runtime dependencies:** Windows and the .NET 10 Desktop Runtime; no
@@ -51,14 +51,18 @@ operation has both an Xbox/XInput control and a keyboard or mouse equivalent.
 
 | Input | Behavior |
 |---|---|
-| `Win + Backtick` | Toggle the overlay |
-| `Win + Shift + Backtick` | Layout-compatible toggle alias |
-| `Ctrl + Shift + Space` | Fallback when the Windows key is locked |
+| Configured global shortcut | Toggle the overlay |
+| `Win + Shift + Backtick` | Layout-compatible alias when the default shortcut is selected |
 | Tray icon double-click | Open the overlay |
 | Launch executable again | Signal the existing instance to open |
 
-The invocation shortcuts are true toggles: the first press opens the overlay
-and the next press closes it. They never advance the selection.
+First-run setup defaults to `Win + Backtick` and offers alternative presets.
+The selected shortcut is checked through `RegisterHotKey` before it is saved.
+If the saved shortcut becomes unavailable, setup opens so the user can choose
+another. The setup page can also be reopened from the tray menu.
+
+The invocation shortcut is a true toggle: the first press opens the overlay
+and the next press closes it. It never advances the selection.
 
 Manual launch opens the overlay after the message loop starts. Windows startup
 uses `--background` and does not interrupt sign-in.
@@ -109,7 +113,9 @@ EnumWindows     NotifyIconSettings
 |---|---|
 | `Program` | DPI setup, single-instance mutex, fatal error boundary |
 | `SwitcherApplicationContext` | Application lifetime, service wiring, tray menu, startup setting, action orchestration |
-| `GlobalHotKey` | Invocation shortcuts, second-instance message, overlay-scoped navigation hotkeys |
+| `GlobalHotKey` | Configurable invocation shortcut, second-instance message, overlay-scoped navigation hotkeys |
+| `ShortcutSettingsStore` | Persist the selected shortcut and first-run setup state |
+| `ShortcutSetupForm` | Guide shortcut selection and report registration conflicts |
 | `XInputNavigationService` | Poll four XInput slots and emit intent-level actions |
 | `SwitcherOverlay` | Drawing, selection, mouse/keyboard interaction, action events |
 | `WindowCatalog` | Discover and describe eligible visible/minimized windows |
@@ -316,14 +322,17 @@ Activation errors are logged and surfaced through a tray notification.
 
 ### Global keyboard shortcuts
 
-`GlobalHotKey` owns a hidden native window and registers:
+`GlobalHotKey` owns a hidden native window and registers the shortcut selected
+in first-run setup. Presets include `Win + Backtick`, `Ctrl + Shift + Space`,
+`Ctrl + Alt + Space`, `Ctrl + Shift + Backtick`, and `Alt + Shift + Space`.
+The default keeps `Win + Shift + Backtick` as an optional layout-compatible
+alias.
 
-- Required: `Win + Backtick`
-- Optional: `Win + Shift + Backtick`
-- Optional: `Ctrl + Shift + Space`
-
-If the required shortcut cannot register, startup fails explicitly. Optional
-conflicts are logged while the remaining shortcuts continue to work.
+Changing the shortcut unregisters the current combination, tests the new one,
+and restores the previous combination if registration fails. Settings are
+written atomically to `settings.json` only after Windows accepts the shortcut.
+Registration conflicts are shown in the setup page instead of terminating the
+application.
 
 While the overlay is visible, the app temporarily registers unmodified:
 
@@ -557,7 +566,7 @@ Desktop Runtime; building additionally requires the .NET 10 SDK.
    input used by the overlay.
 3. **DPI awareness is system-wide.** Moving the overlay between monitors with
    different scale factors may require Per-Monitor-V2 support.
-4. **Shortcuts are fixed.** There is no user-facing shortcut configuration.
+4. **Shortcut choices use presets.** Arbitrary chord recording is not exposed.
 5. **Current foreground inclusion is unchanged.** The foreground app can
    remain in the source list; default index `1` normally selects the next Z-order
    app.
