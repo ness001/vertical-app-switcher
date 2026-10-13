@@ -1,0 +1,13 @@
+# .NET build output
+bin/
+obj/
+
+# Visual Studio user state
+.vs/
+*.suo
+*.user
+
+# Published binaries and symbols
+*.dll
+*.exe
+*.pdb
