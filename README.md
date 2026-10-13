@@ -64,12 +64,41 @@ security and servicing updates apply without republishing the app.
 If the switcher is running, the build requests a normal shutdown immediately
 before replacing the executable and restarts it in background mode afterward.
 
-## Use
+## Launch
 
-1. Run `VerticalAppSwitcher.exe`. The vertical app bar opens immediately.
-2. After dismissing it, press **Win + Backtick** whenever you want to open it
+The included `VerticalAppSwitcher.exe` is built for Windows x64 and requires the
+[.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
+You do not need to run it as an administrator.
+
+To launch it from File Explorer, open this folder and double-click
+`VerticalAppSwitcher.exe`.
+
+To launch it from Windows PowerShell, open PowerShell in this folder and run:
+
+```powershell
+.\VerticalAppSwitcher.exe
+```
+
+The app bar opens immediately and the switcher remains available in the
+notification area after the bar is dismissed. If the switcher is already
+running, launching it again opens the existing app bar instead of starting a
+second copy.
+
+To start the switcher quietly in the notification area without opening the app
+bar, run:
+
+```powershell
+.\VerticalAppSwitcher.exe --background
+```
+
+You can also enable **Start with Windows** from the switcher's notification-area
+menu.
+
+## Controls
+
+1. Press **Win + Backtick** whenever you want to open the app bar
    again. Use **Ctrl + Shift + Space** if the Windows key is locked.
-3. Select an app:
+2. Select an app:
    - Controller D-pad or left stick Up/Down navigates.
    - Controller `A` switches to the selected app.
    - Controller `B` closes the overlay.
@@ -84,7 +113,7 @@ before replacing the executable and restarts it in background mode afterward.
    - `Escape` or clicking elsewhere closes the overlay.
    - Right-click an app for switch, pin, close, force-stop, and recent-removal
      actions.
-4. Right-click the notification-area icon to enable automatic startup or exit.
+3. Right-click the notification-area icon to enable automatic startup or exit.
 
 Only one copy runs at a time. Launching the executable again asks the existing
 copy to show its app bar. Automatic Windows startup uses background mode, so it
