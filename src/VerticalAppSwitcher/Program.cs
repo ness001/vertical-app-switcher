@@ -17,7 +17,19 @@ namespace VerticalAppSwitcher
         [STAThread]
         private static void Main(string[] arguments)
         {
+            if (arguments.Length == 2 && arguments[0] == "--apply-update")
+            {
+                Environment.ExitCode = UpdateInstaller.Run(arguments[1]);
+                return;
+            }
+
+            string updateReady = arguments.Length == 2 && arguments[0] == "--update-ready"
+                && Guid.TryParseExact(arguments[1], "N", out _) ? arguments[1] : null;
             bool shutdownRequested = HasArgument(arguments, "--shutdown");
+            if (updateReady == null && !shutdownRequested && UpdateInstaller.IsUpdateInProgress())
+            {
+                return;
+            }
             bool createdNew;
             using (var mutex = new Mutex(true, @"Local\VerticalAppSwitcher", out createdNew))
             {
@@ -45,7 +57,7 @@ namespace VerticalAppSwitcher
                     return;
                 }
 
-                if (shutdownRequested)
+                if (shutdownRequested || (updateReady == null && UpdateInstaller.IsUpdateInProgress()))
                 {
                     return;
                 }
@@ -60,11 +72,31 @@ namespace VerticalAppSwitcher
                         !HasArgument(arguments, "--background");
 
                     DiagnosticLog.Write("Application started.");
-                    Application.Run(new SwitcherApplicationContext(showImmediately));
+                    using var context = new SwitcherApplicationContext(showImmediately);
+                    EventHandler readyHandler = null;
+                    if (updateReady != null)
+                    {
+                        readyHandler = delegate
+                        {
+                            Application.Idle -= readyHandler;
+                            try
+                            {
+                                using EventWaitHandle ready = EventWaitHandle.OpenExisting(UpdateInstaller.ReadyPrefix + updateReady);
+                                ready.Set();
+                            }
+                            catch (WaitHandleCannotBeOpenedException) { }
+                        };
+                        Application.Idle += readyHandler;
+                    }
+
+                    try { Application.Run(context); }
+                    finally { if (readyHandler != null) Application.Idle -= readyHandler; }
                 }
                 catch (Exception exception)
                 {
+                    Environment.ExitCode = 1;
                     DiagnosticLog.Write("Fatal error: " + exception);
+                    if (updateReady != null) return;
                     MessageBox.Show(
                         exception.Message,
                         "Vertical App Switcher failed",

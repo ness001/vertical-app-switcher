@@ -8,6 +8,7 @@
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <AssemblyName>VerticalAppSwitcher</AssemblyName>
     <RootNamespace>VerticalAppSwitcher</RootNamespace>
+    <Version>0.2.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="..\..\LICENSE" Link="LICENSE" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />

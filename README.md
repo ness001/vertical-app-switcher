@@ -140,6 +140,31 @@ With no running instance, this starts quietly in the notification area. First-ru
 setup or a shortcut conflict can still show setup. With an instance already
 running, it asks that instance to show the app bar.
 
+## Automatic updates
+
+The app checks GitHub Releases shortly after startup and every 12 hours. It
+checks stable releases only, downloads the package for its x64 or Arm64
+architecture, and verifies the SHA-256 checksum before offering installation.
+
+Right-click the notification-area icon and choose **Check for updates...**.
+When an update is ready, select **Update and restart**, or **Later** to postpone
+automatic reminders for one day. You can turn off **Check for updates
+automatically** in the same menu. Manual checks remain available.
+
+Installation requests a normal exit, replaces only the app's release files,
+and restarts at the same path. Settings, pins, recent history, and **Start with
+Windows** stay unchanged. Previous files are kept in an `.update-backup-*`
+folder beside the executable. If replacement fails or the new app exits before
+confirming startup, the helper restores the previous files. If a new process
+stays open without confirming startup, recovery stops rather than force-closing
+it; the error gives the backup path.
+
+Updates require a writable app folder and the matching .NET Desktop Runtime.
+Network failures do not stop the app. Packages are unsigned; a checksum checks
+integrity, not publisher identity. Update requests contact GitHub, but do not
+send window titles, pins, history, or settings. Users of `v0.1.0` must install
+an update-enabled version manually once.
+
 ## Controls
 
 These keyboard commands apply while the **app list has focus**. Search has
@@ -313,8 +338,9 @@ reports that limit and does not request force-stop instead.
   Monitors with different scale factors can require further support.
 - **Window permissions:** Windows can block close requests to elevated or
   protected windows. The reported Task Manager permission issue is unresolved.
-- **Local operation:** the app makes no network requests and does not elevate
-  itself. Saved state and diagnostics stay in the current user's local app data.
+- **Local app data:** window switching and saved state stay local. Automatic
+  update checks contact GitHub Releases. The app does not elevate itself;
+  saved state and diagnostics stay in the current user's local app data.
 
 </details>
 
@@ -326,6 +352,8 @@ reports that limit and does not request force-stop instead.
 | `%LOCALAPPDATA%\VerticalAppSwitcher\state.json` | Pins and recent history. |
 | `%LOCALAPPDATA%\VerticalAppSwitcher\settings.json` | Selected shortcut and first-run setup state. |
 | `%LOCALAPPDATA%\VerticalAppSwitcher\switcher.log` | Runtime diagnostics and errors. |
+| `%LOCALAPPDATA%\VerticalAppSwitcher\updates.json` | Automatic update preference and reminder postponement. |
+| `%LOCALAPPDATA%\VerticalAppSwitcher\Updates\` | Update staging folders and helper logs. |
 
 The log includes app start/stop, shortcut registration, controller actions,
 recent-history updates, and input, activation, persistence, and cleanup errors.

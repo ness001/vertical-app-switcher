@@ -724,7 +724,17 @@ Desktop Runtime; building additionally requires the .NET 10 SDK.
 
 ## 19. Safety and privacy
 
-- The app performs no network communication.
+- Update checks use the public GitHub Releases API over HTTPS and download
+  release assets. No app list, settings, pins, or history are uploaded.
+- The update controller checks after startup and every 12 hours. Downloads are
+  bounded and cancellable. Installation requires an explicit Update and restart
+  action, a SHA-256 match, an allow-listed archive layout, matching executable
+  metadata, and the required Desktop Runtime.
+- A copied helper runs before the normal single-instance path. It verifies the
+  exact parent process and package, waits for normal exit, replaces only release
+  files, and waits for a startup-ready event. Backups support rollback without
+  changing profile files or startup registration. A live unresponsive process
+  is not force-stopped or overwritten.
 - It does not elevate itself.
 - Force-stop requires the separate right-click menu action and an explicit
   Yes response to its warning. D and X never request force-stop.

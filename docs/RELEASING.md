@@ -2,7 +2,7 @@
 
 GitHub Actions builds release packages for Windows x64 and Arm64. Each package
 contains a framework-dependent, single-file executable, `LICENSE`, `NOTICE`,
-and `README.txt`. The target PC needs Windows 10 or 11 and the matching
+`README.txt`, and `update.json`. The target PC needs Windows 10 or 11 and the matching
 [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
 The executable is not code-signed. Follow your organization's security policy
 when Windows or a security product shows a warning.
@@ -16,9 +16,9 @@ when Windows or a security product shows a warning.
 | `release.yml` — Release | Push of a tag that starts with `v` | Checks the tag and commit, builds both architectures, verifies checksums, and automatically publishes a GitHub Release with all four assets. |
 
 CI uses the version `0.0.0-ci.<run-number>`. These are check builds, not published
-releases. A failed build prevents release creation. There is no automated app
-test suite; compilation and package checks do not replace the manual
-[UI checks](UI-TESTING.md).
+releases. A failed build or update check prevents release creation. The x64 job
+runs the focused update checks in `tests/UpdateChecks`. Compilation and these
+checks do not replace the manual [UI checks](UI-TESTING.md).
 
 The workflows use GitHub-hosted runners and the built-in `GITHUB_TOKEN`.
 No repository secrets are required. Build jobs have read-only repository
@@ -48,8 +48,23 @@ pinned to full commit hashes.
    ```
 
 The tag must point to a commit in `main` history. The tag supplies the version
-for the executable metadata and package filenames; the project file does not
-need a version edit.
+for the executable metadata and package filenames. Keep the project file's
+`Version` aligned with the next release so local builds also report the correct
+version to the update service.
+
+## In-app update contract
+
+Starting with version 0.2.0, packages include `update.json` with schema version 1,
+the release version, runtime identifier, and minimum .NET Desktop Runtime.
+Keep this manifest aligned with the project target framework and runtime needs.
+The updater permits only the five documented release files, verifies executable
+version and architecture, and rejects unknown package layouts. A future change
+to this contract must preserve compatibility or require manual installation.
+
+Stable releases are discovered through GitHub's latest-release API. Prereleases
+are not offered automatically. Use increasing version tags; older versions are
+not installed over newer versions. Version 0.1.0 has no updater and needs one
+manual upgrade. Packages remain framework-dependent and unsigned.
 
 ## Check the published release
 
