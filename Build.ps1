@@ -5,28 +5,35 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$project = Join-Path $PSScriptRoot 'VerticalAppSwitcher.csproj'
-$icon = Join-Path $PSScriptRoot 'AppIcon.ico'
+$project = Join-Path $PSScriptRoot 'src\VerticalAppSwitcher\VerticalAppSwitcher.csproj'
+$icon = Join-Path $PSScriptRoot 'src\VerticalAppSwitcher\Assets\AppIcon.ico'
 $publishDirectory = Join-Path `
     $PSScriptRoot `
     (Join-Path 'bin\publish' $RuntimeIdentifier)
 $publishedExecutable = Join-Path $publishDirectory 'VerticalAppSwitcher.exe'
 $output = Join-Path $PSScriptRoot 'VerticalAppSwitcher.exe'
 
-& (Join-Path $PSScriptRoot 'GenerateIcon.ps1') -OutputPath $icon
+& (Join-Path $PSScriptRoot 'scripts\GenerateIcon.ps1') -OutputPath $icon
 
-& dotnet publish `
-    $project `
-    --configuration Release `
-    --runtime $RuntimeIdentifier `
-    --self-contained false `
-    --output $publishDirectory `
-    -p:PublishSingleFile=true `
-    -p:DebugSymbols=false `
-    -p:DebugType=None
+# Resolve the SDK from the repository's global.json, regardless of the caller's directory.
+Push-Location -LiteralPath $PSScriptRoot
+try {
+    & dotnet publish `
+        $project `
+        --configuration Release `
+        --runtime $RuntimeIdentifier `
+        --self-contained false `
+        --output $publishDirectory `
+        -p:PublishSingleFile=true `
+        -p:DebugSymbols=false `
+        -p:DebugType=None
 
-if ($LASTEXITCODE -ne 0) {
-    throw "dotnet publish failed with exit code $LASTEXITCODE."
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet publish failed with exit code $LASTEXITCODE."
+    }
+}
+finally {
+    Pop-Location
 }
 
 if (-not (Test-Path -LiteralPath $publishedExecutable -PathType Leaf)) {

@@ -3,7 +3,7 @@
 Use this procedure for focused checks of Vertical App Switcher. It describes
 expected behavior, not completed test results. Read the current source when a
 change affects this contract. See [README.md](../README.md) for controls and
-[DESIGN.md](../DESIGN.md) for the design.
+[DESIGN.md](./DESIGN.md) for the design.
 
 ## Scope and safety
 
@@ -32,10 +32,11 @@ settings, and `switcher.log` holds diagnostics.
 
 ## Build and app lifecycle
 
-Run commands from the repository root in Windows PowerShell. The project is
-native Windows Forms, targets `net10.0-windows`, and needs the .NET 10 SDK to
-build. The default target is Windows x64. The root executable is
-framework-dependent and needs the matching .NET 10 Desktop Runtime.
+Run commands from the repository root in Windows PowerShell. The project at
+`src\VerticalAppSwitcher\VerticalAppSwitcher.csproj` uses native Windows Forms,
+targets `net10.0-windows`, and needs the .NET 10 SDK to build. The default target
+is Windows x64. The root executable is framework-dependent and needs the
+matching .NET 10 Desktop Runtime.
 
 Build only if the changed code has not already been built:
 
@@ -43,8 +44,9 @@ Build only if the changed code has not already been built:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build.ps1
 ```
 
-`Build.ps1` publishes Release output under `bin\publish\win-x64` and copies the
-single-file executable to `VerticalAppSwitcher.exe` in the repository root.
+`Build.ps1` publishes Release output under `bin\publish\win-x64`, with `LICENSE`
+and `NOTICE` beside the single-file executable. It copies the executable to
+`VerticalAppSwitcher.exe` in the repository root.
 Before replacement, it finds a running instance by its full executable path,
 requests a normal shutdown, and waits for exit. If that instance was running,
 it restarts the root executable with `--background`. If it was stopped, the
@@ -155,6 +157,10 @@ in place. Selection moves to the nearest remaining match when necessary. An
 empty result stays in the same tab. A tray-only entry has no window handle;
 normal close must report the limit, not force-stop the process.
 
+Windows can block close requests to elevated or protected windows. The reported
+Task Manager permission issue is still unresolved. Do not use Task Manager as a
+close-test target or report this issue as fixed without separate evidence.
+
 ## Controller and context-menu safety
 
 Run these checks only when the changed behavior needs them:
@@ -187,11 +193,18 @@ scale. Confirm that the search font remains usable and the text still renders.
 Include normal closing or disposal of a test overlay. For a real app exit,
 use only a task-approved normal shutdown and restore the app as needed.
 
-A focused harness can check repeated layout, `searchBox.Font` measurement,
-painting, and disposal on an STA thread with a WinForms message loop. If it
-creates fake `AppWindow` entries, supply an owned real icon, for example a
-clone of `SystemIcons.Application`; a null icon can fail painting before the
-font path is tested. Keep fixture icons and fonts alive for their full use.
+A focused harness must use the current source project at
+`src\VerticalAppSwitcher\VerticalAppSwitcher.csproj`. After the default build,
+the managed assembly is
+`src\VerticalAppSwitcher\bin\Release\net10.0-windows\win-x64\VerticalAppSwitcher.dll`.
+Use `win-arm64` instead of `win-x64` for an Arm build. Do not use a DLL from an
+old root build or a previous temporary fixture.
+
+A harness can check repeated layout, `searchBox.Font` measurement, painting,
+and disposal on an STA thread with a WinForms message loop. If it creates fake
+`AppWindow` entries, supply an owned real icon, for example a clone of
+`SystemIcons.Application`; a null icon can fail painting before the font path
+is tested. Keep fixture icons and fonts alive for their full use.
 Observe message-loop exceptions as well as direct-call exceptions. Reflection
 calls alone may miss failures raised later by native control messages.
 

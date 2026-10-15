@@ -12,6 +12,7 @@
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-10-512BD4?style=flat-square" alt=".NET 10"></a>
   <img src="https://img.shields.io/badge/C%23-WinForms-239120?style=flat-square" alt="C# and Windows Forms">
   <img src="https://img.shields.io/badge/Controller-XInput-107C10?style=flat-square" alt="XInput controller support">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat-square" alt="Apache License 2.0"></a>
   <a href="https://github.com/ness001/vertical-app-switcher/stargazers"><img src="https://img.shields.io/github/stars/ness001/vertical-app-switcher?style=flat-square&amp;label=Stars" alt="GitHub stars"></a>
 </p>
 
@@ -22,6 +23,7 @@
   <a href="#search">Search</a> ·
   <a href="#more-details">More details</a> ·
   <a href="#documentation">Documentation</a> ·
+  <a href="#license">License</a> ·
   <a href="#star-history">Star history</a>
 </p>
 
@@ -70,8 +72,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build.ps1
 .\VerticalAppSwitcher.exe
 ```
 
-The build creates `VerticalAppSwitcher.exe` in the repository folder. It is a
-framework-dependent, single-file executable for **Windows x64** by default.
+The root build script publishes the project at
+`src\VerticalAppSwitcher\VerticalAppSwitcher.csproj` to `bin\publish\win-x64`
+and copies `VerticalAppSwitcher.exe` to the repository folder. The publish
+folder also contains `LICENSE` and `NOTICE`; keep these with any distribution.
+The app is a framework-dependent, single-file executable for **Windows x64**
+by default.
 The PC that runs it needs the matching
 [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
 **Administrator access is not required.** You can also double-click the built
@@ -292,6 +298,8 @@ reports that limit and does not request force-stop instead.
   exclusively.
 - **Display scaling:** the app is system-DPI aware, not Per-Monitor-V2 aware.
   Monitors with different scale factors can require further support.
+- **Window permissions:** Windows can block close requests to elevated or
+  protected windows. The reported Task Manager permission issue is unresolved.
 - **Local operation:** the app makes no network requests and does not elevate
   itself. Saved state and diagnostics stay in the current user's local app data.
 
@@ -321,8 +329,27 @@ without republishing the app.
 
 | Guide | Use it for |
 | --- | --- |
-| [Design and architecture](./DESIGN.md) | Current behavior, components, Windows APIs, state, and known limits. |
+| [Design and architecture](./docs/DESIGN.md) | Current behavior, components, Windows APIs, state, and known limits. |
 | [UI testing](./docs/UI-TESTING.md) | Focused checks, safe test data, app lifecycle, and evidence requirements. |
+
+The app has one project under `src/VerticalAppSwitcher`. See the
+[source layout](./docs/DESIGN.md#source-layout) for its folders and their roles.
+
+## License
+
+Vertical App Switcher is licensed under the
+[Apache License 2.0](./LICENSE). Copyright 2026 ness001. Project attribution is
+in [NOTICE](./NOTICE).
+
+Commercial use, changes, and redistribution are allowed under the license terms.
+When distributing the app or a derived work, include the license, mark changed
+files, and retain the notices required by section 4. Distributions of derived
+works must include the relevant NOTICE attribution in one of the allowed places.
+An in-app credits screen is not required; the attribution can be included in a
+NOTICE file or documentation supplied with the distribution.
+
+The full license controls these terms, including its patent, trademark, and
+warranty provisions.
 
 ## Star history
 

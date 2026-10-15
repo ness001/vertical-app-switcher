@@ -10,15 +10,16 @@ namespace VerticalAppSwitcher
     internal enum CloseRequestSource
     {
         Standard,
-        KeyboardC,
         KeyboardD,
+        KeyboardDelete,
         ControllerX
     }
 
     internal sealed class SwitcherOverlay : Form
     {
         private const float PanelWidth = 390f;
-        private const float HeaderHeight = 124f;
+        private const float CollapsedHeaderHeight = 124f;
+        private const float SearchHeaderHeight = 184f;
         private const float ItemHeight = 68f;
         private const float FooterHeight = 88f;
         private const float EdgeMargin = 24f;
@@ -27,18 +28,18 @@ namespace VerticalAppSwitcher
         private const float TabGap = 4f;
         private const int MaximumVisibleItems = 9;
         private const int OpenTab = 0;
-        private const int TrayTab = 1;
-        private const int DesktopsTab = 2;
-        private const int RecentTab = 3;
-        private const int PinnedTab = 4;
+        private const int PinnedTab = 1;
+        private const int RecentTab = 2;
+        private const int TrayTab = 3;
+        private const int DesktopsTab = 4;
 
         private readonly TabView[] tabs =
         {
             new TabView("Open", "Windows on this desktop", "No open windows"),
-            new TabView("Tray", "Apps in the Windows notification area", "No tray apps found"),
-            new TabView("Desktops", "Windows on other virtual desktops", "No windows on other desktops"),
+            new TabView("Pinned", "Saved apps, open or closed", "No pinned apps"),
             new TabView("Recent", "Closed apps saved to open again", "No recently closed apps"),
-            new TabView("Pinned", "Saved apps, open or closed", "No pinned apps")
+            new TabView("Tray", "Apps in the Windows notification area", "No tray apps found"),
+            new TabView("Desktops", "Windows on other virtual desktops", "No windows on other desktops")
         };
 
         private readonly Font headerFont =
@@ -53,6 +54,7 @@ namespace VerticalAppSwitcher
             new Font("Segoe UI", 10.5f, FontStyle.Regular, GraphicsUnit.Pixel);
         private readonly Font badgeFont =
             new Font("Segoe UI", 9f, FontStyle.Bold, GraphicsUnit.Pixel);
+        private readonly TextBox searchBox = new TextBox();
         private readonly ContextMenuStrip itemMenu = new ContextMenuStrip();
         private readonly ToolStripMenuItem activateMenuItem =
             new ToolStripMenuItem();
@@ -64,6 +66,7 @@ namespace VerticalAppSwitcher
             new ToolStripMenuItem();
 
         private AppWindowCollection windows;
+        private Font searchFont;
         private int activeTab;
         private int selectedIndex = -1;
         private int firstVisibleIndex;
@@ -72,6 +75,10 @@ namespace VerticalAppSwitcher
         private bool switching;
         private bool showingContextMenu;
         private bool confirmationVisible;
+        private bool searchFocused;
+        private bool searchExpanded;
+        private bool overlayActive;
+        private bool layoutUpdatePending;
         private bool shortcutChipHovered;
         private bool gamepadInputMode;
         private Point gamepadMouseOrigin;
@@ -90,7 +97,7 @@ namespace VerticalAppSwitcher
             KeyPreview = true;
             AutoScaleMode = AutoScaleMode.None;
             BackColor = Color.FromArgb(15, 18, 25);
-            Opacity = 0.98d;
+            Opacity = 1d;
             DoubleBuffered = true;
 
             SetStyle(
@@ -99,6 +106,21 @@ namespace VerticalAppSwitcher
                 | ControlStyles.ResizeRedraw
                 | ControlStyles.UserPaint,
                 true);
+
+            searchBox.BorderStyle = BorderStyle.None;
+            searchBox.BackColor = Color.FromArgb(32, 39, 52);
+            searchBox.ForeColor = Color.FromArgb(240, 249, 255);
+            searchBox.Font = itemTitleFont;
+            searchBox.PlaceholderText = "Title or app name";
+            searchBox.AccessibleName = "Search current tab";
+            searchBox.AccessibleDescription =
+                "Filter by title or app name. Up or Down moves focus to the results. Enter opens the current match. Tab returns to the list.";
+            searchBox.TabStop = false;
+            searchBox.Visible = false;
+            searchBox.Enter += OnSearchEntered;
+            searchBox.TextChanged += OnSearchTextChanged;
+            searchBox.KeyDown += OnSearchKeyDown;
+            Controls.Add(searchBox);
 
             activateMenuItem.Click += delegate { ActivateSelection(); };
             pinMenuItem.Click += delegate { TogglePinSelection(); };
@@ -121,10 +143,25 @@ namespace VerticalAppSwitcher
         public event Action<AppWindow, CloseRequestSource> CloseRequested;
         public event Action<AppWindow> ForceStopRequested;
         public event Action ShortcutSetupRequested;
+        public event Action NavigationModeChanged;
+
+        public bool CanUseBrowsingHotKeys
+        {
+            get
+            {
+                return Visible && overlayActive && !searchFocused
+                    && !confirmationVisible && !showingContextMenu;
+            }
+        }
+
+        private float HeaderHeight
+        {
+            get { return searchExpanded ? SearchHeaderHeight : CollapsedHeaderHeight; }
+        }
 
         private List<AppWindow> VisibleWindows
         {
-            get { return tabs[activeTab].Windows; }
+            get { return tabs[activeTab].FilteredWindows; }
         }
 
         protected override CreateParams CreateParams
@@ -144,6 +181,10 @@ namespace VerticalAppSwitcher
         {
             IntPtr foregroundWindow = NativeMethods.GetForegroundWindow();
             DisposeWindows();
+            FocusBrowsingList();
+            searchExpanded = false;
+            searchBox.Visible = false;
+            searchBox.Clear();
             windows = nextWindows;
             gamepadInputMode = false;
             activeTab = OpenTab;
@@ -188,7 +229,7 @@ namespace VerticalAppSwitcher
 
             WindowState = FormWindowState.Normal;
             Activate();
-            Focus();
+            FocusBrowsingList();
             NativeMethods.ActivateForegroundWindow(Handle);
             Invalidate();
         }
@@ -202,7 +243,7 @@ namespace VerticalAppSwitcher
 
             MoveSelection(1);
             Activate();
-            Focus();
+            FocusBrowsingList();
         }
 
         public bool HandleNavigationKey(Keys keyData)
@@ -218,33 +259,90 @@ namespace VerticalAppSwitcher
             }
 
             Keys keyCode = keyData & Keys.KeyCode;
+            Keys modifiers = keyData & Keys.Modifiers;
+            if (modifiers == Keys.Control)
+            {
+                int index = keyCode >= Keys.D1 && keyCode <= Keys.D9
+                    ? (int)keyCode - (int)Keys.D1
+                    : keyCode >= Keys.NumPad1 && keyCode <= Keys.NumPad9
+                        ? (int)keyCode - (int)Keys.NumPad1
+                        : -1;
+                if (index >= 0)
+                {
+                    if (index < VisibleWindows.Count)
+                    {
+                        SelectIndex(index);
+                        ActivateSelection();
+                    }
+
+                    return true;
+                }
+            }
+
+            if (keyCode == Keys.Tab
+                && (modifiers == Keys.None || modifiers == Keys.Shift))
+            {
+                if (searchFocused)
+                {
+                    FocusBrowsingList();
+                }
+                else
+                {
+                    MoveSelection(modifiers == Keys.Shift ? -1 : 1);
+                }
+
+                return true;
+            }
+
+            if (modifiers != Keys.None)
+            {
+                return false;
+            }
+
             if (keyCode == Keys.Escape)
             {
                 HideSwitcher();
                 return true;
             }
 
-            if (keyCode == Keys.Up)
+            if (keyCode == Keys.Up || keyCode == Keys.Down)
             {
-                MoveSelection(-1);
+                if (searchFocused)
+                {
+                    if (VisibleWindows.Count > 0)
+                    {
+                        FocusBrowsingList();
+                        SelectIndex(selectedIndex >= 0 ? selectedIndex : 0);
+                    }
+                }
+                else
+                {
+                    MoveSelection(keyCode == Keys.Up ? -1 : 1);
+                }
+
                 return true;
             }
 
-            if (keyCode == Keys.Down)
+            if (keyCode == Keys.Enter)
             {
-                MoveSelection(1);
+                ActivateSelection();
+                return true;
+            }
+
+            if (searchFocused)
+            {
+                return false;
+            }
+
+            if (keyCode == Keys.S)
+            {
+                ShowSearch();
                 return true;
             }
 
             if (keyCode == Keys.Left || keyCode == Keys.Right)
             {
                 SwitchTab(keyCode == Keys.Left ? -1 : 1);
-                return true;
-            }
-
-            if (keyCode == Keys.Tab)
-            {
-                MoveSelection((keyData & Keys.Shift) == Keys.Shift ? -1 : 1);
                 return true;
             }
 
@@ -260,17 +358,15 @@ namespace VerticalAppSwitcher
                 return true;
             }
 
-            if (keyCode == Keys.Enter || keyCode == Keys.Space)
+            if (keyCode == Keys.Space)
             {
                 ActivateSelection();
                 return true;
             }
 
-            if (keyCode == Keys.Delete || keyCode == Keys.C)
+            if (keyCode == Keys.Delete)
             {
-                RequestCloseSelection(keyCode == Keys.C
-                    ? CloseRequestSource.KeyboardC
-                    : CloseRequestSource.Standard);
+                RequestCloseSelection(CloseRequestSource.KeyboardDelete);
                 return true;
             }
 
@@ -289,12 +385,92 @@ namespace VerticalAppSwitcher
             return false;
         }
 
+        private void ShowSearch()
+        {
+            if (!searchExpanded)
+            {
+                searchExpanded = true;
+                ConfigureBounds();
+                EnsureSelectionVisible();
+                searchBox.Visible = true;
+            }
+
+            searchBox.Focus();
+            Invalidate();
+        }
+
+        private void OnSearchEntered(object sender, EventArgs eventArgs)
+        {
+            searchFocused = true;
+            SetInputMode(false);
+            NotifyNavigationModeChanged();
+        }
+
+        private void OnSearchKeyDown(object sender, KeyEventArgs eventArgs)
+        {
+            SetInputMode(false);
+            if (HandleNavigationKey(eventArgs.KeyData))
+            {
+                eventArgs.Handled = true;
+                eventArgs.SuppressKeyPress = true;
+            }
+        }
+
+        private void OnSearchTextChanged(object sender, EventArgs eventArgs)
+        {
+            SaveTabSelection();
+            ApplySearchFilter();
+            actionStatus = null;
+            UpdateAccessibleDescription();
+            Invalidate();
+        }
+
+        private void FocusBrowsingList()
+        {
+            searchFocused = false;
+            ActiveControl = null;
+            Focus();
+            NotifyNavigationModeChanged();
+        }
+
+        private void RestoreInputFocus()
+        {
+            if (searchFocused)
+            {
+                searchBox.Focus();
+            }
+            else
+            {
+                FocusBrowsingList();
+            }
+        }
+
+        private void NotifyNavigationModeChanged()
+        {
+            NavigationModeChanged?.Invoke();
+            UpdateAccessibleDescription();
+            Invalidate();
+        }
+
         public void RequestCloseSelection(
             CloseRequestSource source = CloseRequestSource.Standard)
         {
+            if (searchFocused
+                && (source == CloseRequestSource.KeyboardD
+                    || source == CloseRequestSource.KeyboardDelete))
+            {
+                return;
+            }
+
             AppWindow selected = GetSelectedWindow();
             Action<AppWindow, CloseRequestSource> handler = CloseRequested;
-            if (!confirmationVisible && selected != null && handler != null)
+            if (source == CloseRequestSource.KeyboardDelete
+                && (selected == null || selected.IsOpen || !selected.IsRecent))
+            {
+                return;
+            }
+
+            if (Visible && !confirmationVisible && selected != null && handler != null)
             {
                 handler(selected, source);
             }
@@ -364,6 +540,11 @@ namespace VerticalAppSwitcher
 
         public void SetInputMode(bool gamepad)
         {
+            if (gamepad && searchFocused)
+            {
+                FocusBrowsingList();
+            }
+
             if (gamepadInputMode == gamepad)
             {
                 return;
@@ -392,10 +573,11 @@ namespace VerticalAppSwitcher
         public void SetConfirmationVisible(bool visible)
         {
             confirmationVisible = visible;
+            NotifyNavigationModeChanged();
             if (!visible && Visible)
             {
                 Activate();
-                Focus();
+                RestoreInputFocus();
             }
         }
 
@@ -565,17 +747,40 @@ namespace VerticalAppSwitcher
             ForegroundWindowOrder.Apply(tabs[OpenTab].Windows);
             tabs[PinnedTab].Windows.Sort(
                 (left, right) => left.PinOrder.CompareTo(right.PinOrder));
+            ApplySearchFilter();
+            UpdateAccessibleDescription();
+        }
+
+        private void ApplySearchFilter()
+        {
+            string query = searchBox.Text;
             foreach (TabView tab in tabs)
             {
+                tab.FilteredWindows.Clear();
+                foreach (AppWindow window in tab.Windows)
+                {
+                    if (string.IsNullOrEmpty(query)
+                        || ContainsSearchText(window.Title, query)
+                        || ContainsSearchText(window.ProcessName, query))
+                    {
+                        tab.FilteredWindows.Add(window);
+                    }
+                }
+
                 if (tab.SelectedWindow != null
-                    && !tab.Windows.Contains(tab.SelectedWindow))
+                    && !tab.FilteredWindows.Contains(tab.SelectedWindow))
                 {
                     tab.SelectedWindow = null;
                 }
             }
 
             RestoreTabSelection();
-            UpdateAccessibleDescription();
+        }
+
+        private static bool ContainsSearchText(string text, string query)
+        {
+            return !string.IsNullOrEmpty(text)
+                && text.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private void ClearSelectionForWindow(AppWindow window)
@@ -610,9 +815,15 @@ namespace VerticalAppSwitcher
             TabView tab = tabs[activeTab];
             selectedIndex = tab.SelectedWindow == null
                 ? -1
-                : tab.Windows.IndexOf(tab.SelectedWindow);
+                : VisibleWindows.IndexOf(tab.SelectedWindow);
+            if (selectedIndex < 0 && VisibleWindows.Count > 0)
+            {
+                selectedIndex = 0;
+            }
+
             firstVisibleIndex = tab.FirstVisibleIndex;
             EnsureSelectionVisible();
+            SaveTabSelection();
         }
 
         private void SwitchTab(int delta)
@@ -663,14 +874,25 @@ namespace VerticalAppSwitcher
             AccessibleName = "Quick Switch - " + tabs[activeTab].Title;
             AccessibleDescription = tabs[activeTab].Description
                 + ". " + VisibleWindows.Count + " apps. "
-                + (selected == null ? "No app selected." : selected.Title + ".")
+                + (selected == null ? "No app selected." : searchFocused
+                    ? "Current match: " + selected.Title + ". App list does not have focus."
+                    : selected.Title + ".")
+                + (string.IsNullOrEmpty(searchBox.Text)
+                    ? string.Empty
+                    : " Search: " + searchBox.Text + ".")
                 + (gamepadInputMode
                     ? " Gamepad hints. D-pad or left stick: Left and Right change tabs;"
                         + " Up and Down select an app. A opens, B goes back, X closes"
-                        + " the window, and Y changes the pin state."
-                    : " Keyboard hints. Left and Right change tabs. Up and Down select"
-                        + " an app. Enter opens, Escape goes back, P changes the pin state,"
-                        + " and D, C or Delete closes the window.")
+                        + " the window or removes a closed Recent entry, and Y changes the pin state."
+                    : searchFocused
+                        ? " Search has focus. Type to filter. Up or Down moves focus to the results."
+                            + " Enter opens. Control plus 1 through 9 opens a numbered result."
+                            + " Tab returns to the list. Escape dismisses."
+                        : " Keyboard hints. Left and Right change tabs. Up and Down select"
+                            + " an app. Enter opens, Escape dismisses, S searches, P changes"
+                            + " the pin state, and D closes the window or removes a closed Recent entry."
+                            + " Delete only removes closed Recent entries."
+                            + " Control plus 1 through 9 opens a numbered result.")
                 + " Click the top-right shortcut to change it.";
         }
 
@@ -759,7 +981,7 @@ namespace VerticalAppSwitcher
         {
             SetInputMode(false);
             Keys keyCode = keyData & Keys.KeyCode;
-            if ((keyCode == Keys.D || keyCode == Keys.C)
+            if (!searchFocused && keyCode == Keys.D
                 && (message.Msg == 0x0100 || message.Msg == 0x0104)
                 && (message.LParam.ToInt64() & (1L << 30)) != 0)
             {
@@ -798,6 +1020,7 @@ namespace VerticalAppSwitcher
 
             DrawHeader(graphics, logicalWidth);
             DrawTabs(graphics, logicalWidth);
+            DrawSearch(graphics, logicalWidth);
             DrawWindows(graphics, logicalWidth);
             DrawFooter(graphics, logicalWidth, logicalHeight);
         }
@@ -859,6 +1082,18 @@ namespace VerticalAppSwitcher
                 return;
             }
 
+            var logicalPoint = new PointF(
+                eventArgs.X / uiScale,
+                eventArgs.Y / uiScale);
+            if (eventArgs.Button == MouseButtons.Left
+                && searchExpanded
+                && GetSearchBounds(ClientSize.Width / uiScale).Contains(logicalPoint))
+            {
+                searchBox.Focus();
+                return;
+            }
+
+            FocusBrowsingList();
             int tabIndex = HitTestTab(eventArgs.Location);
             if (tabIndex >= 0)
             {
@@ -908,8 +1143,28 @@ namespace VerticalAppSwitcher
             }
         }
 
+        protected override void OnActivated(EventArgs eventArgs)
+        {
+            overlayActive = true;
+            base.OnActivated(eventArgs);
+            NotifyNavigationModeChanged();
+        }
+
+        protected override void OnVisibleChanged(EventArgs eventArgs)
+        {
+            if (!Visible)
+            {
+                overlayActive = false;
+            }
+
+            base.OnVisibleChanged(eventArgs);
+            NotifyNavigationModeChanged();
+        }
+
         protected override void OnDeactivate(EventArgs eventArgs)
         {
+            overlayActive = false;
+            NotifyNavigationModeChanged();
             base.OnDeactivate(eventArgs);
             if (showingContextMenu || confirmationVisible)
             {
@@ -929,6 +1184,30 @@ namespace VerticalAppSwitcher
                         && !showingContextMenu && Visible && !ContainsFocus)
                     {
                         HideSwitcher();
+                    }
+                });
+            }
+        }
+
+        protected override void WndProc(ref Message message)
+        {
+            const int displayChange = 0x007e;
+            const int settingChange = 0x001a;
+            const int dpiChange = 0x02e0;
+            base.WndProc(ref message);
+            if ((message.Msg == displayChange || message.Msg == settingChange
+                    || message.Msg == dpiChange)
+                && Visible && !layoutUpdatePending && !IsDisposed && !Disposing)
+            {
+                layoutUpdatePending = true;
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    layoutUpdatePending = false;
+                    if (Visible && !IsDisposed && !Disposing)
+                    {
+                        ConfigureBounds();
+                        EnsureSelectionVisible();
+                        Invalidate();
                     }
                 });
             }
@@ -957,6 +1236,8 @@ namespace VerticalAppSwitcher
 
         protected override void Dispose(bool disposing)
         {
+            // Destroy child controls before releasing fonts they can still use while closing.
+            base.Dispose(disposing);
             if (disposing)
             {
                 DisposeWindows();
@@ -966,10 +1247,9 @@ namespace VerticalAppSwitcher
                 itemTitleFont.Dispose();
                 detailFont.Dispose();
                 badgeFont.Dispose();
+                searchFont?.Dispose();
                 itemMenu.Dispose();
             }
-
-            base.Dispose(disposing);
         }
 
         private void ConfigureBounds()
@@ -1007,6 +1287,22 @@ namespace VerticalAppSwitcher
             Location = new Point(
                 workArea.Left + (int)Math.Round(EdgeMargin * uiScale),
                 workArea.Top + Math.Max(0, (workArea.Height - Height) / 2));
+
+            float searchFontSize = 13f * uiScale;
+            if (searchFont == null || searchFont.Size != searchFontSize)
+            {
+                Font previousSearchFont = searchFont;
+                searchFont = new Font("Segoe UI", searchFontSize, FontStyle.Regular, GraphicsUnit.Pixel);
+                searchBox.Font = searchFont;
+                // WinForms keeps an equal font instance, so only replace it when the size changes.
+                previousSearchFont?.Dispose();
+            }
+            RectangleF searchBounds = GetSearchBounds(PanelWidth);
+            searchBox.SetBounds(
+                (int)Math.Round((searchBounds.X + 10f) * uiScale),
+                (int)Math.Round((searchBounds.Y + 8f) * uiScale),
+                (int)Math.Round((searchBounds.Width - 20f) * uiScale),
+                searchBox.PreferredHeight);
         }
 
         private static float GetUiScale()
@@ -1123,7 +1419,7 @@ namespace VerticalAppSwitcher
                         new RectangleF(bounds.X, bounds.Y + 3f, bounds.Width, 17f));
                     DrawCenteredString(
                         graphics,
-                        tabs[index].Windows.Count.ToString(),
+                        tabs[index].FilteredWindows.Count.ToString(),
                         detailFont,
                         foreground,
                         new RectangleF(bounds.X, bounds.Y + 19f, bounds.Width, 16f));
@@ -1151,6 +1447,31 @@ namespace VerticalAppSwitcher
                 TabHeight);
         }
 
+        private static RectangleF GetSearchBounds(float width)
+        {
+            return new RectangleF(16f, 138f, width - 32f, 34f);
+        }
+
+        private void DrawSearch(Graphics graphics, float width)
+        {
+            if (!searchExpanded)
+            {
+                return;
+            }
+
+            using (var labelBrush = new SolidBrush(Color.FromArgb(180, 191, 210)))
+            using (var background = new SolidBrush(searchBox.BackColor))
+            using (var border = new Pen(searchFocused
+                ? Color.FromArgb(103, 213, 255)
+                : Color.FromArgb(83, 103, 133), searchFocused ? 2f : 1f))
+            using (GraphicsPath path = CreateRoundedRectangle(GetSearchBounds(width), 7f))
+            {
+                graphics.DrawString("Search", subtitleFont, labelBrush, new PointF(18f, 120f));
+                graphics.FillPath(background, path);
+                graphics.DrawPath(border, path);
+            }
+        }
+
         private void DrawWindows(Graphics graphics, float width)
         {
             if (windows == null)
@@ -1165,19 +1486,23 @@ namespace VerticalAppSwitcher
                 {
                     DrawCenteredString(
                         graphics,
-                        tabs[activeTab].EmptyText,
+                        string.IsNullOrEmpty(searchBox.Text)
+                            ? tabs[activeTab].EmptyText
+                            : "No matching apps",
                         itemTitleFont,
                         titleBrush,
                         new RectangleF(16f, HeaderHeight + 10f, width - 32f, 24f));
                     DrawCenteredString(
                         graphics,
-                        activeTab == PinnedTab
-                            ? (gamepadInputMode
-                                ? "Select an app in another tab, then press Y."
-                                : "Select an app in another tab, then press P.")
-                            : (gamepadInputMode
-                                ? "Move the D-pad or left stick sideways to change tabs."
-                                : "Use Left/Right to change tabs."),
+                        !string.IsNullOrEmpty(searchBox.Text)
+                            ? "Change or clear the search to see more apps."
+                            : activeTab == PinnedTab
+                                ? (gamepadInputMode
+                                    ? "Select an app in another tab, then press Y."
+                                    : "Select an app in another tab, then press P.")
+                                : (gamepadInputMode
+                                    ? "Move the D-pad or left stick sideways to change tabs."
+                                    : "Use Left/Right to change tabs."),
                         detailFont,
                         detailBrush,
                         new RectangleF(16f, HeaderHeight + 36f, width - 32f, 20f));
@@ -1193,7 +1518,8 @@ namespace VerticalAppSwitcher
             {
                 int slot = index - firstVisibleIndex;
                 float y = HeaderHeight + slot * ItemHeight;
-                DrawWindow(graphics, VisibleWindows[index], index == selectedIndex, y, width);
+                DrawWindow(graphics, VisibleWindows[index], index,
+                    index == selectedIndex && !searchFocused, y, width);
             }
 
             if (VisibleWindows.Count > visibleCapacity)
@@ -1205,6 +1531,7 @@ namespace VerticalAppSwitcher
         private void DrawWindow(
             Graphics graphics,
             AppWindow window,
+            int index,
             bool selected,
             float y,
             float width)
@@ -1270,7 +1597,7 @@ namespace VerticalAppSwitcher
             var detailBounds = new RectangleF(
                 76f,
                 y + 36f,
-                Math.Max(20f, width - 98f),
+                Math.Max(20f, width - (index < 9 ? 130f : 98f)),
                 18f);
 
             using (var titleBrush = new SolidBrush(
@@ -1295,9 +1622,22 @@ namespace VerticalAppSwitcher
                     detailFormat);
             }
 
+            if (index < 9)
+            {
+                var numberBounds = new RectangleF(width - 46f, y + 35f, 22f, 20f);
+                using (GraphicsPath numberPath = CreateRoundedRectangle(numberBounds, 4f))
+                using (var numberBackground = new SolidBrush(Color.FromArgb(47, 59, 78)))
+                using (var numberBrush = new SolidBrush(Color.FromArgb(184, 231, 255)))
+                {
+                    graphics.FillPath(numberBackground, numberPath);
+                    DrawCenteredString(
+                        graphics, (index + 1).ToString(), shortcutFont, numberBrush, numberBounds);
+                }
+            }
+
             if (badgeText != null)
             {
-                var badgeBounds = new RectangleF(width - 92f, y + 22f, 68f, 22f);
+                var badgeBounds = new RectangleF(width - 92f, y + 11f, 68f, 20f);
                 using (GraphicsPath badgePath = CreateRoundedRectangle(badgeBounds, 7f))
                 using (var badgeBrush = new SolidBrush(
                     window.IsPinned
@@ -1349,6 +1689,8 @@ namespace VerticalAppSwitcher
 
         private void DrawFooter(Graphics graphics, float width, float height)
         {
+            AppWindow selected = GetSelectedWindow();
+            bool removeRecent = selected != null && selected.IsRecent && !selected.IsOpen;
             float top = height - FooterHeight;
             using (var dividerPen = new Pen(Color.FromArgb(48, 57, 72), 1f))
             using (var textBrush = new SolidBrush(Color.FromArgb(163, 175, 194)))
@@ -1368,7 +1710,7 @@ namespace VerticalAppSwitcher
                         graphics, "B", "Back", Color.FromArgb(246, 117, 121), textBrush,
                         new RectangleF(12f + hintWidth, top + 32f, hintWidth, 22f));
                     DrawGamepadButtonHint(
-                        graphics, "X", "Close", Color.FromArgb(99, 175, 249), textBrush,
+                        graphics, "X", removeRecent ? "Remove" : "Close", Color.FromArgb(99, 175, 249), textBrush,
                         new RectangleF(12f + hintWidth * 2f, top + 32f, hintWidth, 22f));
                     DrawGamepadButtonHint(
                         graphics, "Y", "Pin", Color.FromArgb(246, 210, 98), textBrush,
@@ -1378,20 +1720,26 @@ namespace VerticalAppSwitcher
                 {
                     DrawCenteredString(
                         graphics,
-                        "LEFT/RIGHT  Tabs   UP/DOWN  Apps",
+                        searchFocused
+                            ? "UP/DOWN  Focus list   ENTER  Open   TAB  List"
+                            : "LEFT/RIGHT  Tabs   UP/DOWN  Apps   S  Search",
                         detailFont,
                         textBrush,
                         new RectangleF(12f, top + 4f, width - 24f, 22f));
                     DrawCenteredString(
                         graphics,
-                        "ENTER  Open   ESC  Back   P  Pin",
+                        searchFocused
+                            ? "CTRL+1..9  Open numbered app   ESC  Back"
+                            : "ENTER  Open   CTRL+1..9  Open   ESC  Back",
                         detailFont,
                         textBrush,
                         new RectangleF(12f, top + 26f, width - 24f, 22f));
                 }
 
                 string footerText = string.IsNullOrEmpty(actionStatus)
-                    ? (gamepadInputMode ? null : "D / C / DEL  Close window")
+                    ? (gamepadInputMode ? null : searchFocused
+                        ? "Type to filter this tab"
+                        : removeRecent ? "P  Pin   D  Remove recent" : "P  Pin   D  Close window")
                     : actionStatus;
                 if (!string.IsNullOrEmpty(footerText))
                 {
@@ -1670,16 +2018,18 @@ namespace VerticalAppSwitcher
             closeMenuItem.Enabled = open || selected.IsRecent;
             forceStopMenuItem.Visible = open;
             showingContextMenu = true;
+            NotifyNavigationModeChanged();
             itemMenu.Show(this, location);
         }
 
         private void OnItemMenuClosed(object sender, ToolStripDropDownClosedEventArgs eventArgs)
         {
             showingContextMenu = false;
+            NotifyNavigationModeChanged();
             if (Visible)
             {
                 Activate();
-                Focus();
+                RestoreInputFocus();
             }
         }
 
@@ -1724,6 +2074,7 @@ namespace VerticalAppSwitcher
             foreach (TabView tab in tabs)
             {
                 tab.Windows.Clear();
+                tab.FilteredWindows.Clear();
                 tab.SelectedWindow = null;
                 tab.FirstVisibleIndex = 0;
             }
@@ -1750,6 +2101,7 @@ namespace VerticalAppSwitcher
             public readonly string Description;
             public readonly string EmptyText;
             public readonly List<AppWindow> Windows = new List<AppWindow>();
+            public readonly List<AppWindow> FilteredWindows = new List<AppWindow>();
             public AppWindow SelectedWindow;
             public int FirstVisibleIndex;
         }

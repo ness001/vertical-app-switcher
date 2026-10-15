@@ -1,27 +1,27 @@
 # Vertical App Switcher Design
 
 **Status:** Implemented current-state design<br>
-**Last updated:** 2026-10-14<br>
+**Last updated:** 2026-10-15<br>
 **Platform:** Windows 10/11<br>
 **UI framework:** C# Windows Forms on .NET 10 LTS<br>
 **Runtime dependencies:** Windows and the .NET 10 Desktop Runtime; no
 third-party packages
 
 This document describes the application as it exists on the date above. It is
-the architectural reference for future changes; `README.md` remains the
-short-form build and usage guide.
+the architectural reference for future changes; [README.md](../README.md)
+remains the short-form build and usage guide.
 
 ## 1. Product intent
 
 Vertical App Switcher is a lightweight, controller-friendly Windows overlay
-inspired by Xbox Game Bar. It provides a vertical list in five tabs:
+inspired by Xbox Game Bar. It provides a vertical list in five tabs, in this order:
 
 - Open: taskbar windows on the current virtual desktop, including minimized
   windows.
+- Pinned: persistently saved applications.
+- Recent: recently closed applications and File Explorer folders.
 - Tray: running notification-area applications, including overflow icons.
 - Desktops: windows on other virtual desktops.
-- Recent: recently closed applications and File Explorer folders.
-- Pinned: persistently saved applications.
 
 The app is designed for handheld PCs and normal Windows desktops. Every primary
 operation has both an Xbox/XInput control and a keyboard or mouse equivalent.
@@ -80,23 +80,61 @@ uses `--background` and does not interrupt sign-in.
 
 ### Navigation and actions
 
+The keyboard controls below apply while browsing the app list, not while
+search has focus. Search input has separate rules in the next section.
+
 | Action | Controller | Keyboard/mouse |
 |---|---|---|
 | Previous/next tab | D-pad or left stick Left/Right | Left/Right or tab click |
 | Previous/next entry | D-pad or left stick Up/Down | Up/Down, Tab, mouse wheel |
 | Open/switch/reopen | A | Enter, Space, left-click |
+| Open numbered entry | - | Ctrl+1 through Ctrl+9 |
+| Show and focus search | - | S; click the field after it is shown |
 | Dismiss overlay | B | Escape or invocation shortcut |
-| Request normal close | X | D, C, Delete, or right-click |
+| Request normal close | X | D or right-click |
+| Remove closed Recent entry | X | D, Delete, or right-click |
 | Request force-stop warning | - | Separate right-click menu action |
 | Pin/unpin | Y | P |
 | First/last entry | - | Home/End |
 
-Every controller X or keyboard D press requests only a normal close of the
-selected window. C and Delete also request normal close for an open window.
-Delete removes a Recent entry if its app is closed; D, C, and X do not.
-Repeated presses of these controls never request force-stop. Right-click
-exposes open/switch, pin/unpin, normal close, a separate force-stop action with
-a Yes/No warning, and recent-removal actions.
+Controller X and keyboard D request a normal close for a live selected window,
+or remove a Recent entry when its app is already closed. Any saved pin stays.
+D is the only keyboard close command. C has no close action. Delete never
+closes an app; it only removes a closed Recent entry. The footer changes its
+D/X label from Close to Remove for closed Recent entries. Repeated actions never
+request force-stop. Right-click exposes open/switch, pin/unpin, normal close,
+a separate force-stop action with a Yes/No warning, and recent-removal actions.
+
+### Search
+
+Search is keyboard/mouse only. Controller search is not mapped or required.
+
+The app list has focus when the overlay opens. Search starts hidden and does
+not reserve header space. S expands the header and shows and focuses search;
+the first S is not added to the query. Once shown, search stays visible through
+tab and focus changes until the next invocation hides it again. A click in the
+visible field resumes typing. The query matches part
+of `Title` or `ProcessName` in the current tab and ignores letter case. The
+filter preserves row order. The query stays across tab changes while the
+overlay is open and clears on the next invocation. It is not saved to disk.
+An empty query restores all entries in that tab. Tab counts show filtered
+counts. With no matches, the list shows **No matching apps** and **Change or
+clear the search to see more apps.** Native text editing supports Ctrl+A then
+Backspace or Delete to clear the query; there is no separate clear button.
+
+While search has focus, letters, including D, P, and S, are text. Left, Right,
+Home, End, and Delete retain their text-editing actions. With matches present,
+the first Up or Down moves focus to the current result without advancing it.
+Later arrow presses navigate the list. With no matches, Up/Down stays in search.
+The current result has no selection highlight while search has focus; moving
+to the list shows its highlight and enables D/P actions. S returns to search.
+Enter opens the current match. Tab or Shift+Tab returns focus to the app list
+without clearing the query. Clicking a tab or using the controller also
+returns to list controls.
+Ctrl+1 through Ctrl+9 opens the first through ninth filtered entry from either
+search or list focus. Row
+numbers show these targets; they are not relative to the current scroll
+position.
 
 ## 3. High-level architecture
 
@@ -123,6 +161,50 @@ WindowCatalog   TrayAppCatalog
 EnumWindows     NotifyIconSettings
 ```
 
+### Source layout
+
+The app has one Windows Forms project. Files are grouped by responsibility;
+these folders are not separate projects or services.
+
+```text
+Build.ps1
+LICENSE
+NOTICE
+README.md
+docs/
+  DESIGN.md
+  UI-TESTING.md
+  assets/
+scripts/
+  GenerateIcon.ps1
+src/
+  VerticalAppSwitcher/
+    VerticalAppSwitcher.csproj
+    Program.cs
+    Application/
+    UI/
+    Input/
+    Windows/
+    Persistence/
+    Models/
+    Assets/
+```
+
+| Path under `src/VerticalAppSwitcher` | Contents |
+|---|---|
+| `Program.cs` | Entry point, DPI setup, and single-instance startup |
+| `Application/` | App lifetime, action orchestration, recent-window tracking, startup registration, and diagnostics |
+| `UI/` | The switcher overlay and shortcut setup form |
+| `Input/` | Global hotkeys, shortcut definitions, and XInput navigation |
+| `Windows/` | Window and tray discovery, `AppWindow` activation and close actions, foreground order, Explorer folders, virtual desktops, and native APIs |
+| `Persistence/` | App state and shortcut settings stores |
+| `Models/` | Window collections, snapshots, updates, and saved-data records |
+| `Assets/` | Generated app icon |
+
+The root build command and root executable path stay the same. Project-local
+`bin/` and `obj/` folders hold intermediate build output. The build script
+publishes to the root `bin/publish/<RID>` folder; see section 18.
+
 ### Component responsibilities
 
 | Component | Responsibility |
@@ -133,7 +215,7 @@ EnumWindows     NotifyIconSettings
 | `ShortcutSettingsStore` | Persist the selected shortcut and first-run setup state |
 | `ShortcutSetupForm` | Guide shortcut selection and report registration conflicts |
 | `XInputNavigationService` | Poll four XInput slots and emit intent-level actions |
-| `SwitcherOverlay` | Drawing, selection, mouse/keyboard interaction, action events |
+| `SwitcherOverlay` | Drawing, search filtering, selection, mouse/keyboard interaction, action events |
 | `WindowCatalog` | Discover and describe eligible visible/minimized windows |
 | `ForegroundWindowOrder` | Track foreground use during the session and order Open rows |
 | `TrayAppCatalog` | Discover running notification-area applications |
@@ -221,21 +303,29 @@ History checks the HWND, process ID, thread ID, and process start time. Window
 create/destroy events clear history for a reused HWND. Windows whose identity
 cannot be checked use the discovery-order fallback.
 
-This order step does not change Tray, Desktops, Recent, or Pinned. The Pinned
-tab uses saved pin order; recent identities are limited to 12. An inactive pin
-remains in Pinned even when no process runs. An offline pinned app that was
-recently closed also appears in Recent.
+Foreground-use ordering does not change Tray, Desktops, Recent, or Pinned.
+Pin status does not affect the order in Open, Tray, Desktops, or Recent.
+Pinning changes the badge and membership in the Pinned tab, not an item's
+priority in its state tab.
+
+Pinned is a filter across all app states, not a separate state. It includes
+pinned open windows, tray apps, recent apps, other-desktop windows, and saved
+apps that are not running. Entries remain in their matching state tab too.
+The Pinned tab uses saved pin order; recent identities are limited to 12.
 
 At opening, the overlay selects the entry after the foreground entry in Open
 when that entry is found; otherwise it selects the first available entry.
 When Open is empty, it shows the first nonempty tab. Each tab keeps its own
-selection and scroll position when the user changes tabs.
+selection and scroll position when the user changes tabs. A query change keeps
+the selected row if it still matches; otherwise it selects the first match.
+Scrolling adjusts to keep that selection visible.
 
-A closed-window update does not change the active tab. The selected row stays
-selected if it is still in that tab. If it leaves the tab, the overlay selects
-the row at its former index, or the last row if that index no longer exists.
-If no rows remain, the active tab stays selected and empty. This applies when a
-row moves to Recent or Tray, remains only in Pinned, or is removed.
+A closed-window update does not change the active tab or the search query.
+The selected row stays selected if it is still in that tab's filtered list.
+If it leaves the list, the overlay selects the row at its former index, or the
+last row if that index no longer exists. If no matches remain, the active tab
+stays selected and empty. This applies when a row moves to Recent or Tray,
+remains only in Pinned, or is removed.
 
 ## 6. Normal window discovery
 
@@ -369,12 +459,19 @@ setup page reports a conflict and lets the user choose or check another chord.
 A pressed registered shortcut is captured during setup and does not open the
 overlay.
 
-While the overlay is visible, the app temporarily registers unmodified Up,
-Down, Left, Right, Enter, Escape, Delete, C, D, P, Home, and End. D uses
-no-repeat registration to prevent repeated global close requests while held.
-They are unregistered when the overlay hides. `ProcessCmdKey` remains the local
-fallback. This handles the case where the overlay is visible but Windows
-does not transfer foreground focus.
+While the overlay is visible and search does not have focus, the app
+registers temporary navigation and action hotkeys. These let the user control
+the list. D requests normal close or removal of a closed Recent entry;
+C is not registered. Delete only removes a closed Recent entry. S focuses
+search, and Ctrl+1 through Ctrl+9 opens a numbered entry. D uses no-repeat
+registration to prevent repeated global close requests while held.
+
+Search focus releases the overlay navigation hotkeys but keeps the invocation
+shortcut active. The app checks queued global navigation actions again before
+it runs them and ignores them if search has focus. Local search input handles
+text editing, Up/Down, Enter, and Ctrl+1 through Ctrl+9. Leaving search restores
+browsing hotkeys if the overlay is still visible. Hiding the overlay releases
+them. `ProcessCmdKey` remains the local fallback.
 
 ### XInput
 
@@ -397,26 +494,35 @@ The footer shows one set of input hints at a time:
 - Each time the overlay opens, it shows keyboard hints.
 - A controller action changes the footer to Xbox-style gamepad hints.
 - A keyboard or mouse action restores keyboard hints.
+- Browsing hints include S Search and D Close. Search-focus hints show Up/Down
+  Focus list, Enter Open, Tab List, and Ctrl+1..9 Open numbered app. They do not
+  show letter-key close or pin commands while search has focus.
 
-This changes only the hints. Keyboard, mouse, and controller controls remain
-available with either set of hints. The footer does not combine keyboard keys
+The input-device hint mode does not disable controls. Search focus changes
+keyboard actions as described above. The footer does not combine keyboard keys
 and controller buttons in one label.
 
 ## 11. Overlay UI and DPI
 
-The overlay is a borderless, topmost, custom-drawn WinForms window.
+The overlay is a borderless, topmost, fully opaque WinForms window so text
+from background apps does not show through it. The header, tabs, rows,
+and footer are custom-drawn. Search uses a native text box for text input,
+with the label **Search** and placeholder **Title or app name**.
 
 Logical dimensions:
 
 - Width: 390
-- Header: 124, including five tab targets
+- Header: 124 by default; 184 when search is shown, including five tab targets
+  and the search field
 - Row: 68
 - Footer: 88
 - Maximum visible rows: 9
 - Work-area edge margin: 24
 
 The overlay appears on the foreground window's monitor, centered vertically in
-that monitor's working area.
+that monitor's working area. While visible, it recalculates its bounds and row
+capacity after display, work-area, or DPI-change notifications. This keeps the
+footer within the working area after a resolution change.
 
 Rendering uses one logical coordinate system and a manual DPI scale. Icons are
 converted to bitmaps and drawn with `Graphics.DrawImage`; `DrawIcon` is avoided
@@ -424,7 +530,9 @@ because it did not follow the same transform and caused row misalignment at
 handheld display scaling.
 
 The current implementation is system-DPI aware through `SetProcessDPIAware`
-and `GetDpiForSystem`; it is not Per-Monitor-V2 aware.
+and `GetDpiForSystem`; it is not Per-Monitor-V2 aware. Search reuses its font
+until the scaled size changes. WinForms can retain the previous font when an
+equal font is assigned, so repeated layout must not dispose that active font.
 
 The overlay hides when:
 
@@ -436,7 +544,8 @@ The overlay hides when:
 
 ## 12. Pinning
 
-Y/P toggles a persisted pin by application identity.
+Controller Y or keyboard P while browsing toggles a persisted pin by
+application identity. P types text when search has focus.
 
 - Pins appear in the separate Pinned tab immediately, in persisted pin order.
 - An active pinned entry also remains in its state tab.
@@ -446,12 +555,16 @@ Y/P toggles a persisted pin by application identity.
 
 ## 13. Closing and force-stop safety
 
-Controller X and keyboard D request only a normal close of the selected
-window on every press. Keyboard C and Delete also request normal close for
-an open window. These controls never request force-stop, including after a
-failed close request. There is no repeat-key force-stop offer. D, C, and X
-report when the selected app is already closed. Delete can remove a Recent
-entry whose app is closed.
+Controller X and keyboard D request a normal close of a live selected window.
+For a closed Recent entry, they remove its saved history and update the visible
+list without removing its pin or closing a process. A saved offline pin without
+Recent membership is left unchanged. D works only while browsing the app list,
+not while search has focus. C has no close action. Delete never closes an app;
+while browsing, it can remove a closed Recent entry. In search, Delete edits
+text.
+
+Close controls never request force-stop, including after a failed close
+request. There is no repeat-key force-stop offer.
 
 ### HWND-backed entry
 
@@ -586,19 +699,24 @@ Recoverable runtime failures use a tray notification or a confirmation dialog.
 
 ## 18. Build and generated assets
 
-`Build.ps1`:
+The repository-root `Build.ps1`:
 
-1. Regenerates `AppIcon.ico` through `GenerateIcon.ps1`.
-2. Publishes `VerticalAppSwitcher.csproj` in Release mode through the .NET 10
-   SDK.
+1. Regenerates `src/VerticalAppSwitcher/Assets/AppIcon.ico` through
+   `scripts/GenerateIcon.ps1`.
+2. Publishes `src/VerticalAppSwitcher/VerticalAppSwitcher.csproj` in Release
+   mode through the .NET 10 SDK.
 3. Targets `win-x64` by default or the requested supported RID.
-4. Produces a framework-dependent, single-file Windows executable.
-5. Requests a normal shutdown if that exact project executable is running.
-6. Copies the published executable to the project directory.
+4. Produces a framework-dependent, single-file Windows executable under
+   `bin/publish/<RID>` at the repository root.
+5. Requests a normal shutdown if that exact root executable is running.
+6. Copies the published executable to `VerticalAppSwitcher.exe` at the
+   repository root.
 7. Restarts it in background mode when it was running before the build.
 
-`VerticalAppSwitcher.csproj` targets `net10.0-windows`, enables Windows Forms,
-and embeds the generated icon. `global.json` requires a stable .NET 10 SDK and
+`src/VerticalAppSwitcher/VerticalAppSwitcher.csproj` targets `net10.0-windows`,
+enables Windows Forms, and embeds the generated icon. It copies the root
+`LICENSE` and `NOTICE` files beside the published executable, outside the
+single-file bundle. The root `global.json` requires a stable .NET 10 SDK and
 rolls forward to the latest installed .NET 10 feature band.
 
 The framework-dependent publish is intentional. It keeps the executable small
@@ -642,62 +760,19 @@ Desktop Runtime; building additionally requires the .NET 10 SDK.
 9. **Windows only.** Windows Forms, window discovery, global shortcuts, and
    XInput depend on Windows. macOS support requires a separate port and is not
    included in this implementation.
+10. **Window permissions apply.** Windows can block close requests to elevated
+    or protected windows. The reported Task Manager permission issue is
+    unresolved. The app does not elevate itself.
 
-## 21. Continuous documentation Stop hook
+## 21. Documentation maintenance
 
-The workspace contains a repository-level Copilot hook:
+No repository-managed documentation hooks are included in this checkout. See
+[docs/UI-TESTING.md](./UI-TESTING.md) for manual checks.
 
-```text
-.github/hooks/continuous-documentation.json
-.github/hooks/Review-Stop.ps1
-```
-
-The VS Code-compatible `Stop` event runs when the main agent attempts to finish
-a turn. Its purpose is to prevent implementation and debugging knowledge from
-drifting away from the project documentation.
-
-On the first stop attempt, the hook returns:
-
-```json
-{
-  "decision": "block",
-  "reason": "Perform the project close-out review..."
-}
-```
-
-This forces one additional agent turn that must:
-
-1. Review the work for significant reusable learnings.
-2. Update the appropriate existing skill or instruction when a durable
-   non-obvious learning exists.
-3. Update this design document when architecture, behavior, input, discovery,
-   identity, persistence, safety, build, diagnostics, limitations, or verified
-   behavior changed.
-4. Update the README when user-facing behavior or build/use instructions
-   changed.
-5. Verify work and clean temporary diagnostics before completion.
-
-The hook deliberately does not require meaningless documentation churn. If the
-turn contains no applicable learning or design change, the agent records
-nothing and completes after the review.
-
-`stop_hook_active` is the loop guard. When Copilot invokes the hook again after
-the forced continuation, the script returns:
-
-```json
-{
-  "decision": "allow"
-}
-```
-
-This guarantees at most one documentation-review continuation per turn and
-avoids the platform's repeated-block runaway limit. Invalid hook input is
-reported to stderr and allowed rather than trapping the session.
-
-The hook is Windows-oriented and runs through Windows PowerShell with a
-10-second timeout. Its configuration is project-local under `.github/hooks`,
-so future Copilot sessions opened from this workspace inherit the maintenance
-contract.
+Update this design document when architecture, behavior, input, discovery,
+identity, persistence, safety, build, diagnostics, or known limits change.
+Update the README when controls or build and use instructions change. Record
+only verified results, and remove task-owned temporary diagnostics after checks.
 
 ## 22. Previously verified baseline as of 2026-10-12
 
