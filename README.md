@@ -149,8 +149,8 @@ for a live window, or remove its Recent entry if the app is already closed.
 Removing a Recent entry keeps any saved pin. The footer shows **Close** or
 **Remove** for the selected row.
 
-`D` is the only keyboard close command. `C` has no close action. `Delete` never
-closes an app. None of these keys or controller buttons requests force-stop.
+`Delete` removes only closed Recent entries. Keyboard and controller close
+commands never request force-stop.
 
 Right-click a row for open/switch, pin, normal close, force-stop, and
 recent-removal actions. **Force-stop is a separate menu action.** It can discard
@@ -163,7 +163,7 @@ icon for startup settings or **Exit**; double-click it to open the overlay.
 
 ## Search
 
-Search is a **keyboard and mouse feature**. There is no controller search binding.
+Search is a **keyboard and mouse feature**.
 
 1. Press `S` while browsing. The hidden search field appears and receives
    focus. This first `S` is not added to the query.
@@ -188,8 +188,7 @@ clears the query and hides search, with no empty search space above the list.
 - While search has focus, letters such as `D`, `P`, and `S` are text, not app
   commands. `Left`, `Right`, `Home`, `End`, and `Delete` keep their text-editing
   actions.
-- Use `Ctrl + A`, then `Backspace` or `Delete`, to clear the query. There is no
-  separate clear button.
+- Use `Ctrl + A`, then `Backspace` or `Delete`, to clear the query.
 - `Tab` or `Shift + Tab` returns focus to the list without clearing the query.
   Clicking a tab or using the controller also returns to list controls. Click
   the visible search field to continue typing.
@@ -240,9 +239,8 @@ all Open rows use discovery order.
 
 When the overlay opens, it selects the entry **after the foreground window in
 Open** if that window is listed. Otherwise, it selects the first available
-entry. This is not a separate "previously used app" selection rule. If Open is
-empty, the first nonempty tab opens. Each tab keeps its selection and scroll
-position while you change tabs.
+entry. If Open is empty, the first nonempty tab opens. Each tab keeps its
+selection and scroll position while you change tabs.
 
 **Pinned** is a filter across app states. It includes pinned open windows, tray
 apps, recent apps, other-desktop windows, and saved apps that are not running.
