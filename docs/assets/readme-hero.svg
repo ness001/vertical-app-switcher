@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="416" viewBox="0 0 1280 416" fill="none" role="img" aria-labelledby="hero-title hero-description">
+  <title id="hero-title">Vertical App Switcher — Find your next window.</title>
+  <desc id="hero-description">An original banner for Vertical App Switcher. A dark navy background, bright text, and layered window shapes show a vertical app list with one row selected in cyan. The window shapes are decorative illustrations, not a screenshot.</desc>
+  <defs>
+    <linearGradient id="hero-background" x1="0" y1="0" x2="1280" y2="416" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1B2535"/>
+      <stop offset="0.55" stop-color="#111923"/>
+      <stop offset="1" stop-color="#0D131D"/>
+    </linearGradient>
+    <linearGradient id="hero-panel" x1="760" y1="128" x2="1080" y2="358" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#273448"/>
+      <stop offset="1" stop-color="#182230"/>
+    </linearGradient>
+    <linearGradient id="hero-selection" x1="780" y1="232" x2="1060" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#355870"/>
+      <stop offset="1" stop-color="#283D53"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="1" y="1" width="1278" height="414" rx="24" fill="url(#hero-background)" stroke="#344155" stroke-width="2"/>
+  <path d="M664 1V415" stroke="#263347"/>
+  <path d="M665 1H1256A23 23 0 0 1 1279 24V392A23 23 0 0 1 1256 415H665Z" fill="#132435" fill-opacity="0.25"/>
+
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <rect x="72" y="49" width="40" height="40" rx="10" fill="#223349" stroke="#4B6680"/>
+    <path d="M82 60H102M82 69H102M82 78H96" stroke="#91E2FF" stroke-width="3" stroke-linecap="round"/>
+    <text x="128" y="76" fill="#B5C4D8" font-size="16" font-weight="600" letter-spacing="2">WINDOWS 10 / 11</text>
+    <text x="68" y="166" fill="#F4F8FF" font-size="66" font-weight="700" letter-spacing="-2">Vertical App</text>
+    <text x="68" y="239" fill="#F4F8FF" font-size="66" font-weight="700" letter-spacing="-2">Switcher</text>
+    <text x="72" y="292" fill="#BFCEE0" font-size="26">Find your next window.</text>
+    <path d="M72 341H104" stroke="#67D5FF" stroke-width="3" stroke-linecap="round"/>
+    <text x="120" y="347" fill="#ADBED4" font-size="16" letter-spacing="1.4">KEYBOARD / MOUSE / CONTROLLER</text>
+  </g>
+
+  <g aria-hidden="true">
+    <rect x="890" y="52" width="284" height="228" rx="18" fill="#142130" stroke="#35475F" stroke-width="2"/>
+    <path d="M890 88H1174" stroke="#35475F" stroke-width="2"/>
+    <path d="M910 70H950" stroke="#506A86" stroke-width="4" stroke-linecap="round"/>
+    <path d="M1140 70H1154" stroke="#506A86" stroke-width="3" stroke-linecap="round"/>
+    <rect x="826" y="90" width="302" height="230" rx="18" fill="#19283A" stroke="#4A607A" stroke-width="2"/>
+    <path d="M826 127H1128" stroke="#3B5069" stroke-width="2"/>
+    <path d="M846 109H906" stroke="#66809D" stroke-width="4" stroke-linecap="round"/>
+    <path d="M1094 109H1108" stroke="#66809D" stroke-width="3" stroke-linecap="round"/>
+    <rect x="768" y="140" width="320" height="230" rx="18" fill="#080E16" fill-opacity="0.45"/>
+    <rect x="760" y="128" width="320" height="230" rx="18" fill="url(#hero-panel)" stroke="#6C86A5" stroke-width="2"/>
+    <path d="M760 167H1080" stroke="#465B74"/>
+    <path d="M782 148H857" stroke="#D7E3F2" stroke-width="4" stroke-linecap="round"/>
+    <rect x="1026" y="140" width="32" height="16" rx="5" fill="#344D66"/>
+    <path d="M1036 148H1048" stroke="#8EDFFF" stroke-width="2" stroke-linecap="round"/>
+
+    <rect x="780" y="183" width="280" height="46" rx="9" fill="#223146"/>
+    <rect x="798" y="195" width="22" height="22" rx="6" fill="#8FA7C0"/>
+    <path d="M838 199H994M838 212H938" stroke="#9CB1CB" stroke-width="5" stroke-linecap="round"/>
+
+    <rect x="780" y="237" width="280" height="46" rx="9" fill="url(#hero-selection)" stroke="#6A9AB9"/>
+    <path d="M781 248V272" stroke="#67D5FF" stroke-width="4" stroke-linecap="round"/>
+    <rect x="798" y="249" width="22" height="22" rx="6" fill="#67D5FF"/>
+    <path d="M838 253H1008" stroke="#F0FAFF" stroke-width="5" stroke-linecap="round"/>
+    <path d="M838 266H960" stroke="#B4D7ED" stroke-width="5" stroke-linecap="round"/>
+    <path d="M1031 255L1037 260L1031 265" stroke="#A6EAFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <rect x="780" y="291" width="280" height="46" rx="9" fill="#223146"/>
+    <rect x="798" y="303" width="22" height="22" rx="6" fill="#8FA7C0"/>
+    <path d="M838 307H979M838 320H918" stroke="#9CB1CB" stroke-width="5" stroke-linecap="round"/>
+    <path d="M697 260H736M727 251L736 260L727 269" stroke="#67D5FF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M1128 320H1174V306" stroke="#46627D" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="1174" cy="296" r="3" fill="#67D5FF"/>
+  </g>
+</svg>

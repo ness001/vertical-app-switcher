@@ -12,85 +12,6 @@ using Microsoft.Win32;
 
 namespace VerticalAppSwitcher
 {
-    internal static class Program
-    {
-        [STAThread]
-        private static void Main(string[] arguments)
-        {
-            bool shutdownRequested = HasArgument(arguments, "--shutdown");
-            bool createdNew;
-            using (var mutex = new Mutex(true, @"Local\VerticalAppSwitcher", out createdNew))
-            {
-                if (!createdNew)
-                {
-                    if (shutdownRequested)
-                    {
-                        if (!GlobalHotKey.RequestExitExistingInstance())
-                        {
-                            Environment.ExitCode = 1;
-                        }
-
-                        return;
-                    }
-
-                    if (!GlobalHotKey.RequestShowExistingInstance())
-                    {
-                        MessageBox.Show(
-                            "Vertical App Switcher is already running, but its window could not be opened.",
-                            "Vertical App Switcher",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Warning);
-                    }
-
-                    return;
-                }
-
-                if (shutdownRequested)
-                {
-                    return;
-                }
-
-                NativeMethods.SetProcessDPIAware();
-                Application.EnableVisualStyles();
-                Application.SetCompatibleTextRenderingDefault(false);
-
-                try
-                {
-                    bool showImmediately =
-                        !HasArgument(arguments, "--background");
-
-                    DiagnosticLog.Write("Application started.");
-                    Application.Run(new SwitcherApplicationContext(showImmediately));
-                }
-                catch (Exception exception)
-                {
-                    DiagnosticLog.Write("Fatal error: " + exception);
-                    MessageBox.Show(
-                        exception.Message,
-                        "Vertical App Switcher failed",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
-                }
-            }
-        }
-
-        private static bool HasArgument(string[] arguments, string expected)
-        {
-            foreach (string argument in arguments)
-            {
-                if (string.Equals(
-                    argument,
-                    expected,
-                    StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-    }
-
     internal sealed class SwitcherApplicationContext : ApplicationContext
     {
         private readonly SwitcherOverlay overlay;
@@ -147,6 +68,7 @@ namespace VerticalAppSwitcher
             closedAppTracker.Error += OnClosedAppTrackerError;
             closedAppTracker.WindowsClosed += OnWindowsClosed;
             overlay.VisibleChanged += OnOverlayVisibilityChanged;
+            overlay.NavigationModeChanged += OnOverlayNavigationModeChanged;
 
             trayMenu = new ContextMenuStrip();
 
@@ -289,7 +211,7 @@ namespace VerticalAppSwitcher
 
         private void OnNavigationKeyPressed(Keys keyData)
         {
-            if (!forceStopConfirmationVisible)
+            if (!forceStopConfirmationVisible && overlay.CanUseBrowsingHotKeys)
             {
                 overlay.SetInputMode(false);
                 overlay.HandleNavigationKey(keyData);
@@ -350,10 +272,15 @@ namespace VerticalAppSwitcher
             bool navigationEnabled = overlay.Visible && !forceStopConfirmationVisible;
             controllerNavigation.Enabled = navigationEnabled;
             closedAppTracker.SetOverlayVisible(overlay.Visible);
+            OnOverlayNavigationModeChanged();
+        }
 
+        private void OnOverlayNavigationModeChanged()
+        {
             try
             {
-                hotKey.SetNavigationEnabled(navigationEnabled);
+                hotKey.SetNavigationEnabled(
+                    overlay.CanUseBrowsingHotKeys && !forceStopConfirmationVisible);
             }
             catch (Win32Exception exception)
             {
@@ -603,16 +530,21 @@ namespace VerticalAppSwitcher
             AppWindow window,
             CloseRequestSource source)
         {
+            if ((source == CloseRequestSource.KeyboardD
+                    || source == CloseRequestSource.KeyboardDelete)
+                && !overlay.CanUseBrowsingHotKeys)
+            {
+                return;
+            }
+
+            if (source == CloseRequestSource.KeyboardDelete
+                && (window.IsOpen || !window.IsRecent))
+            {
+                return;
+            }
+
             if (!window.IsOpen)
             {
-                if (source == CloseRequestSource.KeyboardD
-                    || source == CloseRequestSource.KeyboardC
-                    || source == CloseRequestSource.ControllerX)
-                {
-                    overlay.SetActionStatus("This app is already closed.");
-                    return;
-                }
-
                 if (window.IsRecent)
                 {
                     try
@@ -784,6 +716,7 @@ namespace VerticalAppSwitcher
             appIcon.Dispose();
             trayMenu.Dispose();
             overlay.VisibleChanged -= OnOverlayVisibilityChanged;
+            overlay.NavigationModeChanged -= OnOverlayNavigationModeChanged;
             overlay.ActivationSucceeded -= OnActivationSucceeded;
             overlay.PinToggleRequested -= OnPinToggleRequested;
             overlay.CloseRequested -= OnCloseRequested;
@@ -800,534 +733,6 @@ namespace VerticalAppSwitcher
             hotKey.Dispose();
             overlay.Dispose();
             DiagnosticLog.Write("Application stopped.");
-        }
-    }
-
-    internal sealed class GlobalHotKey : NativeWindow, IDisposable
-    {
-        private const int HotKeyId = 1;
-        private const int UpKeyId = 2;
-        private const int DownKeyId = 3;
-        private const int EnterKeyId = 4;
-        private const int EscapeKeyId = 5;
-        private const int DeleteKeyId = 6;
-        private const int PinKeyId = 7;
-        private const int HomeKeyId = 8;
-        private const int EndKeyId = 9;
-        private const int ShiftedHotKeyId = 10;
-        private const int CloseDKeyId = 11;
-        private const int LeftKeyId = 12;
-        private const int RightKeyId = 13;
-        private const int ShortcutProbeKeyId = 14;
-        private const int CloseKeyId = 15;
-        private const string WindowCaption = "VerticalAppSwitcherHotKey";
-        private readonly Action pressed;
-        private readonly Action showRequested;
-        private readonly Action exitRequested;
-        private readonly Action<Keys> navigationPressed;
-        private ShortcutDefinition currentShortcut;
-        private bool shiftedRegistered;
-        private bool navigationRegistered;
-
-        public GlobalHotKey(
-            Action pressed,
-            Action showRequested,
-            Action exitRequested,
-            Action<Keys> navigationPressed)
-        {
-            this.pressed = pressed;
-            this.showRequested = showRequested;
-            this.exitRequested = exitRequested;
-            this.navigationPressed = navigationPressed;
-            CreateHandle(new CreateParams { Caption = WindowCaption });
-        }
-
-        public ShortcutDefinition CurrentShortcut
-        {
-            get { return currentShortcut; }
-        }
-
-        public string CheckShortcut(ShortcutDefinition shortcut)
-        {
-            if (shortcut == null)
-            {
-                return "Choose a shortcut to test.";
-            }
-
-            if (currentShortcut != null
-                && currentShortcut.Modifiers == shortcut.Modifiers
-                && currentShortcut.VirtualKey == shortcut.VirtualKey)
-            {
-                return null;
-            }
-
-            if (currentShortcut != null
-                && shiftedRegistered
-                && currentShortcut.RegisterShiftedAlias
-                && shortcut.Modifiers
-                    == (currentShortcut.Modifiers | NativeMethods.ModShift)
-                && shortcut.VirtualKey == currentShortcut.VirtualKey)
-            {
-                return null;
-            }
-
-            if (!NativeMethods.RegisterHotKey(
-                    Handle,
-                    ShortcutProbeKeyId,
-                    shortcut.Modifiers,
-                    shortcut.VirtualKey))
-            {
-                int nativeError =
-                    System.Runtime.InteropServices.Marshal.GetLastWin32Error();
-                return shortcut.DisplayText
-                    + " is unavailable. Another application may already use it. "
-                    + new Win32Exception(nativeError).Message;
-            }
-
-            if (!NativeMethods.UnregisterHotKey(Handle, ShortcutProbeKeyId))
-            {
-                int nativeError =
-                    System.Runtime.InteropServices.Marshal.GetLastWin32Error();
-                string error = "Could not release the shortcut test: "
-                    + new Win32Exception(nativeError).Message;
-                DiagnosticLog.Write(error);
-                return error;
-            }
-
-            return null;
-        }
-
-        public bool TrySetShortcut(
-            ShortcutDefinition shortcut,
-            out string error)
-        {
-            if (shortcut == null)
-            {
-                throw new ArgumentNullException("shortcut");
-            }
-
-            error = null;
-            if (currentShortcut != null
-                && string.Equals(
-                    currentShortcut.Id,
-                    shortcut.Id,
-                    StringComparison.Ordinal))
-            {
-                return true;
-            }
-
-            ShortcutDefinition previousShortcut = currentShortcut;
-            UnregisterInvocationHotKeys();
-
-            if (!NativeMethods.RegisterHotKey(
-                    Handle,
-                    HotKeyId,
-                    shortcut.Modifiers,
-                    shortcut.VirtualKey))
-            {
-                int nativeError =
-                    System.Runtime.InteropServices.Marshal.GetLastWin32Error();
-                error =
-                    shortcut.DisplayText
-                    + " is unavailable. Another application may already use it. "
-                    + new Win32Exception(nativeError).Message;
-
-                if (previousShortcut != null)
-                {
-                    string restoreError;
-                    if (!RegisterShortcut(previousShortcut, out restoreError))
-                    {
-                        error += " The previous shortcut also could not be restored: "
-                            + restoreError;
-                    }
-                }
-
-                return false;
-            }
-
-            currentShortcut = shortcut;
-            RegisterShiftedAliasIfNeeded(shortcut);
-            DiagnosticLog.Write(
-                "Global shortcut registered: "
-                + shortcut.DisplayText
-                + (shiftedRegistered ? " (plus Win + Shift + ` alias)" : string.Empty)
-                + ".");
-            return true;
-        }
-
-        public void SetNavigationEnabled(bool enabled)
-        {
-            if (enabled == navigationRegistered)
-            {
-                return;
-            }
-
-            if (!enabled)
-            {
-                UnregisterNavigationKeys();
-                return;
-            }
-
-            try
-            {
-                RegisterNavigationKey(UpKeyId, NativeMethods.VirtualKeyUp);
-                RegisterNavigationKey(DownKeyId, NativeMethods.VirtualKeyDown);
-                RegisterNavigationKey(EnterKeyId, NativeMethods.VirtualKeyReturn);
-                RegisterNavigationKey(EscapeKeyId, NativeMethods.VirtualKeyEscape);
-                RegisterNavigationKey(DeleteKeyId, NativeMethods.VirtualKeyDelete);
-                RegisterNavigationKey(PinKeyId, NativeMethods.VirtualKeyP);
-                RegisterNavigationKey(HomeKeyId, NativeMethods.VirtualKeyHome);
-                RegisterNavigationKey(EndKeyId, NativeMethods.VirtualKeyEnd);
-                RegisterNavigationKey(CloseDKeyId, (uint)Keys.D, NativeMethods.ModNoRepeat);
-                RegisterNavigationKey(CloseKeyId, (uint)Keys.C, NativeMethods.ModNoRepeat);
-                RegisterNavigationKey(LeftKeyId, (uint)Keys.Left);
-                RegisterNavigationKey(RightKeyId, (uint)Keys.Right);
-                navigationRegistered = true;
-            }
-            catch (Win32Exception)
-            {
-                UnregisterNavigationKeys();
-                throw;
-            }
-        }
-
-        public static bool RequestShowExistingInstance()
-        {
-            return RequestExistingInstance(NativeMethods.WmShowSwitcher);
-        }
-
-        public static bool RequestExitExistingInstance()
-        {
-            return RequestExistingInstance(NativeMethods.WmExitSwitcher);
-        }
-
-        private static bool RequestExistingInstance(int message)
-        {
-            IntPtr window = NativeMethods.FindWindow(null, WindowCaption);
-            return window != IntPtr.Zero
-                && NativeMethods.PostMessage(
-                    window,
-                    message,
-                    IntPtr.Zero,
-                    IntPtr.Zero);
-        }
-
-        public void Dispose()
-        {
-            UnregisterNavigationKeys();
-            UnregisterInvocationHotKeys();
-
-            if (Handle != IntPtr.Zero)
-            {
-                DestroyHandle();
-            }
-        }
-
-        protected override void WndProc(ref Message message)
-        {
-            int hotKeyId = message.WParam.ToInt32();
-            if (message.Msg == NativeMethods.WmHotKey
-                && (hotKeyId == HotKeyId
-                    || hotKeyId == ShiftedHotKeyId))
-            {
-                pressed();
-            }
-            else if (message.Msg == NativeMethods.WmHotKey && navigationRegistered)
-            {
-                switch (message.WParam.ToInt32())
-                {
-                    case UpKeyId:
-                        navigationPressed(Keys.Up);
-                        break;
-                    case DownKeyId:
-                        navigationPressed(Keys.Down);
-                        break;
-                    case EnterKeyId:
-                        navigationPressed(Keys.Enter);
-                        break;
-                    case EscapeKeyId:
-                        navigationPressed(Keys.Escape);
-                        break;
-                    case DeleteKeyId:
-                        navigationPressed(Keys.Delete);
-                        break;
-                    case PinKeyId:
-                        navigationPressed(Keys.P);
-                        break;
-                    case HomeKeyId:
-                        navigationPressed(Keys.Home);
-                        break;
-                    case EndKeyId:
-                        navigationPressed(Keys.End);
-                        break;
-                    case CloseDKeyId:
-                        navigationPressed(Keys.D);
-                        break;
-                    case CloseKeyId:
-                        navigationPressed(Keys.C);
-                        break;
-                    case LeftKeyId:
-                        navigationPressed(Keys.Left);
-                        break;
-                    case RightKeyId:
-                        navigationPressed(Keys.Right);
-                        break;
-                }
-            }
-            else if (message.Msg == NativeMethods.WmShowSwitcher)
-            {
-                showRequested();
-            }
-            else if (message.Msg == NativeMethods.WmExitSwitcher)
-            {
-                exitRequested();
-                return;
-            }
-
-            base.WndProc(ref message);
-        }
-
-        private void RegisterNavigationKey(
-            int id,
-            uint virtualKey,
-            uint modifiers = 0)
-        {
-            if (!NativeMethods.RegisterHotKey(Handle, id, modifiers, virtualKey))
-            {
-                throw new Win32Exception(
-                    System.Runtime.InteropServices.Marshal.GetLastWin32Error(),
-                    "Windows could not reserve a navigation key while the app bar is open.");
-            }
-        }
-
-        private bool RegisterShortcut(
-            ShortcutDefinition shortcut,
-            out string error)
-        {
-            if (!NativeMethods.RegisterHotKey(
-                    Handle,
-                    HotKeyId,
-                    shortcut.Modifiers,
-                    shortcut.VirtualKey))
-            {
-                error = new Win32Exception(
-                    System.Runtime.InteropServices.Marshal.GetLastWin32Error()).Message;
-                return false;
-            }
-
-            currentShortcut = shortcut;
-            RegisterShiftedAliasIfNeeded(shortcut);
-            error = null;
-            return true;
-        }
-
-        private void RegisterShiftedAliasIfNeeded(ShortcutDefinition shortcut)
-        {
-            if (!shortcut.RegisterShiftedAlias)
-            {
-                return;
-            }
-
-            shiftedRegistered = NativeMethods.RegisterHotKey(
-                Handle,
-                ShiftedHotKeyId,
-                shortcut.Modifiers | NativeMethods.ModShift,
-                shortcut.VirtualKey);
-            if (!shiftedRegistered)
-            {
-                DiagnosticLog.Write(
-                    "Optional shortcut Win + Shift + ` is unavailable: "
-                    + new Win32Exception(
-                        System.Runtime.InteropServices.Marshal.GetLastWin32Error()).Message);
-            }
-        }
-
-        private void UnregisterInvocationHotKeys()
-        {
-            if (currentShortcut != null)
-            {
-                UnregisterInvocationHotKey(
-                    HotKeyId,
-                    currentShortcut.DisplayText);
-                currentShortcut = null;
-            }
-
-            if (shiftedRegistered)
-            {
-                UnregisterInvocationHotKey(
-                    ShiftedHotKeyId,
-                    "Win + Shift + `");
-                shiftedRegistered = false;
-            }
-        }
-
-        private void UnregisterInvocationHotKey(int id, string displayName)
-        {
-            if (!NativeMethods.UnregisterHotKey(Handle, id))
-            {
-                DiagnosticLog.Write(
-                    "Could not unregister "
-                    + displayName
-                    + ": "
-                    + new Win32Exception(
-                        System.Runtime.InteropServices.Marshal.GetLastWin32Error()).Message);
-            }
-        }
-
-        private void UnregisterNavigationKeys()
-        {
-            UnregisterNavigationKey(UpKeyId);
-            UnregisterNavigationKey(DownKeyId);
-            UnregisterNavigationKey(EnterKeyId);
-            UnregisterNavigationKey(EscapeKeyId);
-            UnregisterNavigationKey(DeleteKeyId);
-            UnregisterNavigationKey(PinKeyId);
-            UnregisterNavigationKey(HomeKeyId);
-            UnregisterNavigationKey(EndKeyId);
-            UnregisterNavigationKey(CloseDKeyId);
-            UnregisterNavigationKey(CloseKeyId);
-            UnregisterNavigationKey(LeftKeyId);
-            UnregisterNavigationKey(RightKeyId);
-            navigationRegistered = false;
-        }
-
-        private void UnregisterNavigationKey(int id)
-        {
-            if (!NativeMethods.UnregisterHotKey(Handle, id))
-            {
-                int error = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
-                if (error != 0 && error != NativeMethods.ErrorHotKeyNotRegistered)
-                {
-                    DiagnosticLog.Write(
-                        "Could not unregister a navigation key: "
-                        + new Win32Exception(error).Message);
-                }
-            }
-        }
-    }
-
-    internal static class StartupRegistration
-    {
-        private const string RunKeyPath =
-            @"Software\Microsoft\Windows\CurrentVersion\Run";
-        private const string ValueName = "VerticalAppSwitcher";
-
-        public static bool TryGetEnabled(out bool enabled, out string error)
-        {
-            enabled = false;
-            error = null;
-
-            try
-            {
-                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKeyPath, false))
-                {
-                    if (key == null)
-                    {
-                        return true;
-                    }
-
-                    string value = Convert.ToString(key.GetValue(ValueName));
-                    enabled = string.Equals(
-                        value,
-                        GetStartupCommand(),
-                        StringComparison.OrdinalIgnoreCase);
-                    return true;
-                }
-            }
-            catch (UnauthorizedAccessException exception)
-            {
-                error = "Windows denied access to the startup setting: " + exception.Message;
-                return false;
-            }
-            catch (SecurityException exception)
-            {
-                error = "Windows blocked access to the startup setting: " + exception.Message;
-                return false;
-            }
-            catch (IOException exception)
-            {
-                error = "The startup setting could not be read: " + exception.Message;
-                return false;
-            }
-        }
-
-        public static bool TrySetEnabled(bool enabled, out string error)
-        {
-            error = null;
-
-            try
-            {
-                using (RegistryKey key = Registry.CurrentUser.CreateSubKey(RunKeyPath))
-                {
-                    if (key == null)
-                    {
-                        error = "Windows could not open the current-user startup settings.";
-                        return false;
-                    }
-
-                    if (enabled)
-                    {
-                        key.SetValue(ValueName, GetStartupCommand(), RegistryValueKind.String);
-                    }
-                    else
-                    {
-                        key.DeleteValue(ValueName, false);
-                    }
-
-                    return true;
-                }
-            }
-            catch (UnauthorizedAccessException exception)
-            {
-                error = "Windows denied access to the startup setting: " + exception.Message;
-                return false;
-            }
-            catch (SecurityException exception)
-            {
-                error = "Windows blocked access to the startup setting: " + exception.Message;
-                return false;
-            }
-            catch (IOException exception)
-            {
-                error = "The startup setting could not be updated: " + exception.Message;
-                return false;
-            }
-        }
-
-        private static string GetStartupCommand()
-        {
-            return "\"" + Application.ExecutablePath + "\" --background";
-        }
-    }
-
-    internal static class DiagnosticLog
-    {
-        private static readonly object SyncRoot = new object();
-
-        public static void Write(string message)
-        {
-            string line = DateTimeOffset.Now.ToString("o") + " " + message + Environment.NewLine;
-
-            try
-            {
-                string directory = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "VerticalAppSwitcher");
-                Directory.CreateDirectory(directory);
-
-                lock (SyncRoot)
-                {
-                    File.AppendAllText(Path.Combine(directory, "switcher.log"), line);
-                }
-            }
-            catch (UnauthorizedAccessException exception)
-            {
-                Debug.WriteLine("Could not write switcher log: " + exception.Message);
-            }
-            catch (IOException exception)
-            {
-                Debug.WriteLine("Could not write switcher log: " + exception.Message);
-            }
         }
     }
 }
