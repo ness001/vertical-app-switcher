@@ -84,6 +84,14 @@ Documentation: https://github.com/ness001/vertical-app-switcher#readme
 "@
     Set-Content -LiteralPath (Join-Path $publishDirectory 'README.txt') `
         -Value $instructions -Encoding utf8
+    $manifest = @{
+        schemaVersion = 1
+        version = $Version
+        runtime = $RuntimeIdentifier
+        desktopRuntime = '10.0.0'
+    }
+    $manifest | ConvertTo-Json | Set-Content `
+        -LiteralPath (Join-Path $publishDirectory 'update.json') -Encoding utf8
     Compress-Archive -LiteralPath $publishDirectory -DestinationPath $archive
     $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
     Set-Content -LiteralPath $checksum `

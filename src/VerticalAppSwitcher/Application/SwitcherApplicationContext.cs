@@ -26,6 +26,7 @@ namespace VerticalAppSwitcher
         private readonly ContextMenuStrip trayMenu;
         private readonly ToolStripMenuItem openItem;
         private readonly ToolStripMenuItem startWithWindowsItem;
+        private readonly UpdateController updates;
         private System.Windows.Forms.Timer initialShowTimer;
         private ShortcutSetupForm shortcutSetupForm;
         private bool shortcutSetupVisible;
@@ -101,6 +102,8 @@ namespace VerticalAppSwitcher
             };
             trayIcon.DoubleClick += delegate { ShowSwitcher(); };
             UpdateShortcutText();
+            updates = new UpdateController(trayMenu, trayIcon, ExitThread,
+                () => !disposed && !shortcutSetupVisible && !forceStopConfirmationVisible);
 
             string startupError;
             bool startupEnabled;
@@ -704,6 +707,7 @@ namespace VerticalAppSwitcher
             }
 
             disposed = true;
+            updates?.Dispose();
             if (initialShowTimer != null)
             {
                 initialShowTimer.Stop();

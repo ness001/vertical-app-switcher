@@ -211,6 +211,40 @@ calls alone may miss failures raised later by native control messages.
 Do not claim a DPI change was tested by repeating layout at one scale. If no
 second display or scale was used, record that limit.
 
+## Update checks
+
+Run the dependency-free update check executable on Windows:
+
+```powershell
+dotnet run --project tests/UpdateChecks/UpdateChecks.csproj --configuration Release
+```
+
+It checks version and architecture selection, trusted asset URLs, checksum
+failure, unsafe archive entries, runtime requirements, isolated replacement and
+rollback, HTTP errors/cancellation, preferences, and native update dialog state.
+Replacement tests use disposable text files and fake restart callbacks, not
+the normal app. The dialog check uses direct control actions, not physical input.
+The harness also supports `--installer-fixture` when published as a single file
+and copied to `VerticalAppSwitcher.exe` in a disposable folder. This mode tests
+the real helper handshake and restart without opening the normal app or loading
+its profile. It writes only disposable packages under `Updates` and fixture
+files in its own folder.
+
+For a freshly published local x64 package, also validate the real archive:
+
+```powershell
+dotnet run --project tests/UpdateChecks/UpdateChecks.csproj --configuration Release -- `
+    bin/release/VerticalAppSwitcher-0.2.0-win-x64.zip win-x64
+```
+
+In the normal app, open the tray menu and select **Check for updates...**.
+Confirm the installed version, check status, GitHub Releases link, and disabled
+installation button when no newer package exists. Repeated clicks must focus
+the same window. Check offline/error status without treating it as an update.
+Do not install an older release or change the user's profile to simulate an
+available update. Test replacement/restart with disposable app instances only;
+never use a helper against unrelated processes or the normal app as a fixture.
+
 ## Evidence and completion
 
 Record the tested executable path, build status, selected checks, observed
