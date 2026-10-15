@@ -72,8 +72,8 @@ can also be reopened from the tray menu. The overlay header shows the
 configured shortcut; clicking its top-right chip opens the same setup page and
 returns to the overlay after Save or Cancel.
 
-The invocation shortcut is a true toggle: the first press opens the overlay
-and the next press closes it. It never advances the selection.
+The invocation shortcut toggles the overlay: the first press opens it and the
+next press closes it.
 
 Manual launch opens the overlay after the message loop starts. Windows startup
 uses `--background` and does not interrupt sign-in.
@@ -99,15 +99,14 @@ search has focus. Search input has separate rules in the next section.
 
 Controller X and keyboard D request a normal close for a live selected window,
 or remove a Recent entry when its app is already closed. Any saved pin stays.
-D is the only keyboard close command. C has no close action. Delete never
-closes an app; it only removes a closed Recent entry. The footer changes its
+Delete removes only closed Recent entries. The footer changes its
 D/X label from Close to Remove for closed Recent entries. Repeated actions never
 request force-stop. Right-click exposes open/switch, pin/unpin, normal close,
 a separate force-stop action with a Yes/No warning, and recent-removal actions.
 
 ### Search
 
-Search is keyboard/mouse only. Controller search is not mapped or required.
+Search is a keyboard and mouse feature.
 
 The app list has focus when the overlay opens. Search starts hidden and does
 not reserve header space. S expands the header and shows and focuses search;
@@ -119,8 +118,8 @@ filter preserves row order. The query stays across tab changes while the
 overlay is open and clears on the next invocation. It is not saved to disk.
 An empty query restores all entries in that tab. Tab counts show filtered
 counts. With no matches, the list shows **No matching apps** and **Change or
-clear the search to see more apps.** Native text editing supports Ctrl+A then
-Backspace or Delete to clear the query; there is no separate clear button.
+clear the search to see more apps.** Use Ctrl+A then Backspace or Delete to
+clear the query.
 
 While search has focus, letters, including D, P, and S, are text. Left, Right,
 Home, End, and Delete retain their text-editing actions. With matches present,
@@ -201,9 +200,10 @@ src/
 | `Models/` | Window collections, snapshots, updates, and saved-data records |
 | `Assets/` | Generated app icon |
 
-The root build command and root executable path stay the same. Project-local
-`bin/` and `obj/` folders hold intermediate build output. The build script
-publishes to the root `bin/publish/<RID>` folder; see section 18.
+Run `Build.ps1` from the repository root to build `VerticalAppSwitcher.exe`
+in that folder. Project-local `bin/` and `obj/` folders hold intermediate build
+output. The build script publishes to the root `bin/publish/<RID>` folder;
+see section 18.
 
 ### Component responsibilities
 
@@ -461,10 +461,10 @@ overlay.
 
 While the overlay is visible and search does not have focus, the app
 registers temporary navigation and action hotkeys. These let the user control
-the list. D requests normal close or removal of a closed Recent entry;
-C is not registered. Delete only removes a closed Recent entry. S focuses
-search, and Ctrl+1 through Ctrl+9 opens a numbered entry. D uses no-repeat
-registration to prevent repeated global close requests while held.
+the list. D requests normal close or removal of a closed Recent entry.
+Delete only removes a closed Recent entry. S focuses search, and Ctrl+1 through
+Ctrl+9 opens a numbered entry. D uses no-repeat registration to prevent repeated
+global close requests while held.
 
 Search focus releases the overlay navigation hotkeys but keeps the invocation
 shortcut active. The app checks queued global navigation actions again before
@@ -525,9 +525,8 @@ capacity after display, work-area, or DPI-change notifications. This keeps the
 footer within the working area after a resolution change.
 
 Rendering uses one logical coordinate system and a manual DPI scale. Icons are
-converted to bitmaps and drawn with `Graphics.DrawImage`; `DrawIcon` is avoided
-because it did not follow the same transform and caused row misalignment at
-handheld display scaling.
+converted to bitmaps and drawn with `Graphics.DrawImage` to use the same scale
+as the text and rows.
 
 The current implementation is system-DPI aware through `SetProcessDPIAware`
 and `GetDpiForSystem`; it is not Per-Monitor-V2 aware. Search reuses its font
@@ -558,13 +557,12 @@ application identity. P types text when search has focus.
 Controller X and keyboard D request a normal close of a live selected window.
 For a closed Recent entry, they remove its saved history and update the visible
 list without removing its pin or closing a process. A saved offline pin without
-Recent membership is left unchanged. D works only while browsing the app list,
-not while search has focus. C has no close action. Delete never closes an app;
-while browsing, it can remove a closed Recent entry. In search, Delete edits
-text.
+Recent membership is left unchanged. D works only while browsing the app list;
+it types text when search has focus. Delete removes only closed Recent entries
+while browsing and edits text in search.
 
-Close controls never request force-stop, including after a failed close
-request. There is no repeat-key force-stop offer.
+Close controls never request force-stop, including after a failed or repeated
+close request.
 
 ### HWND-backed entry
 
@@ -727,7 +725,6 @@ Desktop Runtime; building additionally requires the .NET 10 SDK.
 ## 19. Safety and privacy
 
 - The app performs no network communication.
-- It does not modify MSI firmware or controller configuration.
 - It does not elevate itself.
 - Force-stop requires the separate right-click menu action and an explicit
   Yes response to its warning. D and X never request force-stop.
@@ -747,8 +744,8 @@ Desktop Runtime; building additionally requires the .NET 10 SDK.
 4. **Shortcut checks are scoped to Windows registration.** They do not detect
    combinations handled only inside another application, and the keyboard
    drawing uses a US layout.
-5. **Current foreground inclusion is unchanged.** The foreground app can
-   remain in Open; selection normally starts with the next Open entry.
+5. **The foreground app can remain in Open.** Selection normally starts with
+   the next Open entry.
 6. **State has no schema version.** Current JSON evolution relies on additive,
    optional fields.
 7. **Tray registration is Windows implementation-specific.** It relies on
@@ -766,37 +763,9 @@ Desktop Runtime; building additionally requires the .NET 10 SDK.
 
 ## 21. Documentation maintenance
 
-No repository-managed documentation hooks are included in this checkout. See
-[docs/UI-TESTING.md](./UI-TESTING.md) for manual checks.
+See [docs/UI-TESTING.md](./UI-TESTING.md) for focused manual checks.
 
 Update this design document when architecture, behavior, input, discovery,
 identity, persistence, safety, build, diagnostics, or known limits change.
 Update the README when controls or build and use instructions change. Record
 only verified results, and remove task-owned temporary diagnostics after checks.
-
-## 22. Previously verified baseline as of 2026-10-12
-
-Before the 2026-10-13 tab and setup changes, these items were validated:
-
-- Successful .NET 10 SDK build, single-file publish, and embedded application
-  icon.
-- Running-app rebuild with normal shutdown, executable replacement, and
-  background restart.
-- Single-instance launch and second-launch surfacing.
-- Shortcut toggle behavior for all three invocation chords.
-- Keyboard navigation without reliable foreground focus.
-- XInput slot discovery and D-pad/left-stick/A/B/X/Y behavior.
-- DPI-aligned icons, text, selection cards, and badges.
-- Persistent pin ordering.
-- Normal close and the former second-action force-stop behavior.
-- Live conversion from open row to recent row.
-- Visible-overlay quit refresh: duplicate rows are removed and the last
-  relaunchable row converts to recent without reopening the overlay.
-- File Explorer per-folder tracking and exact-path reopening.
-- Notification-area discovery with visible-window deduplication.
-- Elevated tray discovery (Sunshine).
-- Packaged app metadata and shell activation.
-- Live tray rows for OneDrive, MSI Center M, Xbox App, Doubao, and Sunshine.
-
-When behavior changes, update this document in the same change as the relevant
-source and README sections.
