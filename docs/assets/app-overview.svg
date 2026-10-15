@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="808" viewBox="0 0 1280 808" fill="none" role="img" aria-labelledby="overview-title overview-description">
+  <title id="overview-title">Vertical App Switcher — app list illustration</title>
+  <desc id="overview-description">Illustrative UI with sample entries, not a screenshot. The Open tab is selected. Tabs are ordered Open, Pinned, Recent, Tray, Desktops. Four example windows are listed: Project notes in a text editor, Reference pages in a web browser, Documents in File Explorer, and Command prompt in a terminal. Reference pages is selected. Documents has a Pinned badge without moving to the top. Search is hidden until S is pressed. Keyboard hints show S Search, D Close, P Pin, and Ctrl+1..9 Open.</desc>
+  <defs>
+    <linearGradient id="overview-background" x1="0" y1="0" x2="1280" y2="808" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#152131"/>
+      <stop offset="1" stop-color="#0D141E"/>
+    </linearGradient>
+    <linearGradient id="overview-panel" x1="64" y1="64" x2="714" y2="740" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1C212C"/>
+      <stop offset="1" stop-color="#0F1219"/>
+    </linearGradient>
+    <linearGradient id="overview-selection" x1="80" y1="348" x2="698" y2="348" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3C4E67"/>
+      <stop offset="1" stop-color="#273245"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="1" y="1" width="1278" height="806" rx="24" fill="url(#overview-background)" stroke="#344155" stroke-width="2"/>
+  <rect x="74" y="76" width="650" height="676" rx="22" fill="#080D14" fill-opacity="0.6"/>
+  <rect x="64" y="64" width="650" height="676" rx="22" fill="url(#overview-panel)" stroke="#4E5B70" stroke-width="2"/>
+
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <text x="92" y="117" fill="#F4F7FC" font-size="30" font-weight="700" letter-spacing="1">QUICK SWITCH</text>
+    <text x="94" y="151" fill="#AFBDD0" font-size="21">Windows on this desktop</text>
+    <rect x="552" y="88" width="134" height="39" rx="10" fill="#2F3B4E" stroke="#536785"/>
+    <text x="619" y="114" fill="#8EE1FF" font-size="21" text-anchor="middle">Win + `</text>
+
+    <rect x="88" y="177" width="112" height="67" rx="9" fill="#2A4459"/>
+    <rect x="208" y="177" width="112" height="67" rx="9" fill="#202734"/>
+    <rect x="328" y="177" width="112" height="67" rx="9" fill="#202734"/>
+    <rect x="448" y="177" width="112" height="67" rx="9" fill="#202734"/>
+    <rect x="568" y="177" width="112" height="67" rx="9" fill="#202734"/>
+    <g font-size="20" text-anchor="middle">
+      <text x="144" y="205" fill="#F0F9FF" font-weight="600">Open</text>
+      <text x="264" y="205" fill="#C4D0E1">Pinned</text>
+      <text x="384" y="205" fill="#C4D0E1">Recent</text>
+      <text x="504" y="205" fill="#C4D0E1">Tray</text>
+      <text x="624" y="205" fill="#C4D0E1">Desktops</text>
+    </g>
+    <g font-size="17" text-anchor="middle" fill="#B4C9DE">
+      <text x="144" y="230">4</text>
+      <text x="264" y="230">1</text>
+      <text x="384" y="230">2</text>
+      <text x="504" y="230">1</text>
+      <text x="624" y="230">3</text>
+    </g>
+    <path d="M104 242H184" stroke="#67D5FF" stroke-width="3"/>
+    <path d="M82 259H696" stroke="#303948"/>
+
+    <g aria-hidden="true">
+      <rect x="101" y="284" width="48" height="48" rx="12" fill="#2D4559"/>
+      <path d="M115 294H130L136 300V322H115Z" stroke="#B7D7ED" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M130 294V301H136M120 308H131M120 314H128" stroke="#B7D7ED" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <text x="170" y="303" fill="#DAE0EA" font-size="25" font-weight="600">Project notes</text>
+    <text x="170" y="331" fill="#ACBACF" font-size="18">Text editor</text>
+    <rect x="644" y="311" width="30" height="27" rx="5" fill="#2F3B4E"/>
+    <text x="659" y="331" fill="#B8E7FF" font-size="17" text-anchor="middle">1</text>
+
+    <rect x="80" y="351" width="618" height="86" rx="13" fill="url(#overview-selection)" stroke="#5C7FA6"/>
+    <path d="M81 367V421" stroke="#59D3FF" stroke-width="4"/>
+    <g aria-hidden="true">
+      <rect x="101" y="370" width="48" height="48" rx="12" fill="#274D68"/>
+      <circle cx="125" cy="394" r="14" stroke="#91E1FF" stroke-width="2"/>
+      <ellipse cx="125" cy="394" rx="6" ry="14" stroke="#91E1FF" stroke-width="2"/>
+      <path d="M111 394H139" stroke="#91E1FF" stroke-width="2"/>
+    </g>
+    <text x="170" y="389" fill="#FAFCFF" font-size="25" font-weight="600">Reference pages</text>
+    <text x="170" y="417" fill="#C4D5E8" font-size="18">Web browser</text>
+    <rect x="644" y="397" width="30" height="27" rx="5" fill="#2F3B4E"/>
+    <text x="659" y="417" fill="#B8E7FF" font-size="17" text-anchor="middle">2</text>
+
+    <g aria-hidden="true">
+      <rect x="101" y="464" width="48" height="48" rx="12" fill="#3B382B"/>
+      <path d="M111 479H122L126 483H139V499H111Z" fill="#E2C578"/>
+      <path d="M111 480V476H122L126 480H137V483" stroke="#E2C578" stroke-width="2" stroke-linejoin="round"/>
+    </g>
+    <text x="170" y="483" fill="#DAE0EA" font-size="25" font-weight="600">Documents</text>
+    <text x="170" y="511" fill="#ACBACF" font-size="18">File Explorer</text>
+    <rect x="566" y="461" width="108" height="26" rx="8" fill="#275363"/>
+    <text x="620" y="479" fill="#A0E8FF" font-size="13" font-weight="600" text-anchor="middle" letter-spacing="1">PINNED</text>
+    <rect x="644" y="491" width="30" height="27" rx="5" fill="#2F3B4E"/>
+    <text x="659" y="511" fill="#B8E7FF" font-size="17" text-anchor="middle">3</text>
+
+    <g aria-hidden="true">
+      <rect x="101" y="558" width="48" height="48" rx="12" fill="#2C3548"/>
+      <path d="M113 574L120 581L113 588M126 589H137" stroke="#BACDE8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <text x="170" y="577" fill="#DAE0EA" font-size="25" font-weight="600">Command prompt</text>
+    <text x="170" y="605" fill="#ACBACF" font-size="18">Terminal</text>
+    <rect x="644" y="585" width="30" height="27" rx="5" fill="#2F3B4E"/>
+    <text x="659" y="605" fill="#B8E7FF" font-size="17" text-anchor="middle">4</text>
+
+    <path d="M82 644H696" stroke="#303948"/>
+    <g font-size="18">
+      <rect x="94" y="674" width="30" height="30" rx="6" fill="#263347" stroke="#4B5D75"/>
+      <text x="109" y="695" fill="#D4E8FC" text-anchor="middle">S</text>
+      <text x="134" y="695" fill="#C3D0E3">Search</text>
+      <rect x="232" y="674" width="30" height="30" rx="6" fill="#263347" stroke="#4B5D75"/>
+      <text x="247" y="695" fill="#D4E8FC" text-anchor="middle">D</text>
+      <text x="272" y="695" fill="#C3D0E3">Close</text>
+      <rect x="359" y="674" width="30" height="30" rx="6" fill="#263347" stroke="#4B5D75"/>
+      <text x="374" y="695" fill="#D4E8FC" text-anchor="middle">P</text>
+      <text x="399" y="695" fill="#C3D0E3">Pin</text>
+      <rect x="470" y="674" width="136" height="30" rx="6" fill="#263347" stroke="#4B5D75"/>
+      <text x="538" y="695" fill="#D4E8FC" font-size="17" text-anchor="middle">Ctrl+1..9</text>
+      <text x="616" y="695" fill="#C3D0E3">Open</text>
+    </g>
+
+    <text x="786" y="115" fill="#82DDFF" font-size="16" font-weight="600" letter-spacing="2">THE OPEN VIEW</text>
+    <text x="782" y="180" fill="#F4F8FF" font-size="38" font-weight="700" letter-spacing="-0.8">Your apps.</text>
+    <text x="782" y="226" fill="#F4F8FF" font-size="38" font-weight="700" letter-spacing="-0.8">One clear list.</text>
+
+    <path d="M786 275H1188" stroke="#304156"/>
+    <text x="786" y="323" fill="#E6F1FF" font-size="25" font-weight="600">Start with the list</text>
+    <text x="786" y="358" fill="#B3C3D8" font-size="21">Select a window and open it.</text>
+    <text x="786" y="389" fill="#B3C3D8" font-size="21">Search stays out of the way.</text>
+
+    <text x="786" y="464" fill="#E6F1FF" font-size="25" font-weight="600">Press S to search</text>
+    <text x="786" y="499" fill="#B3C3D8" font-size="21">Filter the current tab by app</text>
+    <text x="786" y="530" fill="#B3C3D8" font-size="21">name or window title.</text>
+
+    <text x="786" y="605" fill="#E6F1FF" font-size="25" font-weight="600">Keep useful apps pinned</text>
+    <text x="786" y="640" fill="#B3C3D8" font-size="21">Find saved apps in Pinned,</text>
+    <text x="786" y="671" fill="#B3C3D8" font-size="21">whether they are open or closed.</text>
+
+    <text x="640" y="782" fill="#ACBCD2" font-size="17" text-anchor="middle">Illustrative UI with sample entries. Not a screenshot.</text>
+  </g>
+</svg>
