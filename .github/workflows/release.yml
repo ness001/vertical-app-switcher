@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check version and main branch history
+        id: version
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if ($env:RELEASE_TAG -cnotmatch '^v((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?)$') {
+              throw 'Use a version tag such as v1.2.3 or v1.2.3-rc.1.'
+          }
+          $version = $Matches[1]
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) {
+              throw 'The release commit must be part of main.'
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "prerelease=$($version.Contains('-').ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+  build:
+    needs: validate
+    uses: ./.github/workflows/build-packages.yml
+    with:
+      version: ${{ needs.validate.outputs.version }}
+
+  release:
+    name: Create draft release
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Download release packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: release
+
+      - name: Verify assets and create draft
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          PACKAGE_VERSION: ${{ needs.validate.outputs.version }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+        run: |
+          $assets = @()
+          foreach ($runtime in @('win-x64', 'win-arm64')) {
+              $name = "VerticalAppSwitcher-$env:PACKAGE_VERSION-$runtime.zip"
+              $archive = Join-Path 'release' $name
+              $checksum = "$archive.sha256"
+              $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+              if ((Get-Content -LiteralPath $checksum -Raw).Trim() -cne "$hash  $name") {
+                  throw "Checksum mismatch for $name."
+              }
+              $assets += $archive, $checksum
+          }
+          $arguments = @(
+              'release', 'create', $env:RELEASE_TAG,
+              '--verify-tag', '--draft', '--generate-notes',
+              '--title', "Vertical App Switcher $env:RELEASE_TAG"
+          )
+          if ($env:PRERELEASE -eq 'true') {
+              $arguments += '--prerelease'
+          }
+          & gh @arguments @assets
+          if ($LASTEXITCODE -ne 0) {
+              throw 'Could not create the draft release. Existing releases are not overwritten.'
+          }

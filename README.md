@@ -59,6 +59,21 @@ dependencies.
 
 ## Quick start
 
+### Download a release
+
+Open [GitHub Releases](https://github.com/ness001/vertical-app-switcher/releases)
+and choose the ZIP for **win-x64** or **win-arm64**, if a published release is
+available. Install the matching
+[.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0),
+extract the ZIP, and run `VerticalAppSwitcher.exe`. Keep `LICENSE` and `NOTICE`
+with the executable. Release executables are not code-signed; follow your
+organization's security policy if a warning appears.
+
+For build checks, use the artifacts on the
+[CI workflow](https://github.com/ness001/vertical-app-switcher/actions/workflows/ci.yml).
+These are not published releases. See the [release guide](docs/RELEASING.md)
+for package checks and release steps.
+
 ### Build from source
 
 1. Use Windows 10 or 11 and install the
@@ -329,6 +344,7 @@ without republishing the app.
 | --- | --- |
 | [Design and architecture](./docs/DESIGN.md) | Current behavior, components, Windows APIs, state, and known limits. |
 | [UI testing](./docs/UI-TESTING.md) | Focused checks, safe test data, app lifecycle, and evidence requirements. |
+| [Releases](./docs/RELEASING.md) | GitHub pipelines, Windows packages, checksums, and release steps. |
 
 The app has one project under `src/VerticalAppSwitcher`. See the
 [source layout](./docs/DESIGN.md#source-layout) for its folders and their roles.
