@@ -106,10 +106,10 @@ namespace VerticalAppSwitcher
         private readonly ToolStripMenuItem openItem;
         private readonly ToolStripMenuItem startWithWindowsItem;
         private System.Windows.Forms.Timer initialShowTimer;
+        private ShortcutSetupForm shortcutSetupForm;
         private bool shortcutSetupVisible;
+        private bool forceStopConfirmationVisible;
         private string shortcutRegistrationError;
-        private string pendingCloseKey;
-        private DateTime pendingCloseUntilUtc = DateTime.MinValue;
         private bool disposed;
 
         public SwitcherApplicationContext(bool showImmediately)
@@ -123,6 +123,7 @@ namespace VerticalAppSwitcher
             overlay.PinToggleRequested += OnPinToggleRequested;
             overlay.CloseRequested += OnCloseRequested;
             overlay.ForceStopRequested += OnForceStopRequested;
+            overlay.ShortcutSetupRequested += OnShortcutSetupRequested;
 
             hotKey = new GlobalHotKey(
                 OnHotKeyPressed,
@@ -210,6 +211,7 @@ namespace VerticalAppSwitcher
             }
 
             controllerNavigation.Start();
+            ForegroundWindowOrder.Start();
             closedAppTracker.Start();
 
             if (showImmediately
@@ -240,6 +242,22 @@ namespace VerticalAppSwitcher
 
         private void OnHotKeyPressed()
         {
+            if (forceStopConfirmationVisible)
+            {
+                return;
+            }
+
+            if (shortcutSetupVisible)
+            {
+                if (shortcutSetupForm != null)
+                {
+                    shortcutSetupForm.CaptureRegisteredShortcut(hotKey.CurrentShortcut);
+                }
+
+                ShowShortcutSetup(null);
+                return;
+            }
+
             DiagnosticLog.Write("Global shortcut invoked.");
 
             if (overlay.Visible)
@@ -253,7 +271,14 @@ namespace VerticalAppSwitcher
 
         private void OnExternalShowRequested()
         {
-            ShowSwitcher(true);
+            if (shortcutSetupVisible)
+            {
+                ShowShortcutSetup(null);
+            }
+            else
+            {
+                ShowSwitcher(true);
+            }
         }
 
         private void OnExternalExitRequested()
@@ -264,12 +289,22 @@ namespace VerticalAppSwitcher
 
         private void OnNavigationKeyPressed(Keys keyData)
         {
-            overlay.HandleNavigationKey(keyData);
+            if (!forceStopConfirmationVisible)
+            {
+                overlay.SetInputMode(false);
+                overlay.HandleNavigationKey(keyData);
+            }
         }
 
         private void OnControllerNavigationRequested(
             ControllerNavigationAction action)
         {
+            if (forceStopConfirmationVisible)
+            {
+                return;
+            }
+
+            overlay.SetInputMode(true);
             DiagnosticLog.Write("Controller navigation: " + action + ".");
 
             switch (action)
@@ -280,6 +315,12 @@ namespace VerticalAppSwitcher
                 case ControllerNavigationAction.Next:
                     overlay.HandleNavigationKey(Keys.Down);
                     break;
+                case ControllerNavigationAction.PreviousTab:
+                    overlay.HandleNavigationKey(Keys.Left);
+                    break;
+                case ControllerNavigationAction.NextTab:
+                    overlay.HandleNavigationKey(Keys.Right);
+                    break;
                 case ControllerNavigationAction.Activate:
                     overlay.HandleNavigationKey(Keys.Enter);
                     break;
@@ -287,7 +328,7 @@ namespace VerticalAppSwitcher
                     overlay.HandleNavigationKey(Keys.Escape);
                     break;
                 case ControllerNavigationAction.Close:
-                    overlay.RequestCloseSelection();
+                    overlay.RequestCloseSelection(CloseRequestSource.ControllerX);
                     break;
                 case ControllerNavigationAction.TogglePin:
                     overlay.TogglePinSelection();
@@ -306,12 +347,13 @@ namespace VerticalAppSwitcher
 
         private void OnOverlayVisibilityChanged(object sender, EventArgs eventArgs)
         {
-            controllerNavigation.Enabled = overlay.Visible;
+            bool navigationEnabled = overlay.Visible && !forceStopConfirmationVisible;
+            controllerNavigation.Enabled = navigationEnabled;
             closedAppTracker.SetOverlayVisible(overlay.Visible);
 
             try
             {
-                hotKey.SetNavigationEnabled(overlay.Visible);
+                hotKey.SetNavigationEnabled(navigationEnabled);
             }
             catch (Win32Exception exception)
             {
@@ -341,10 +383,37 @@ namespace VerticalAppSwitcher
             }
         }
 
+        private void OnShortcutSetupRequested()
+        {
+            if (shortcutSetupVisible)
+            {
+                ShowShortcutSetup(null);
+                return;
+            }
+
+            if (!overlay.Visible)
+            {
+                return;
+            }
+
+            overlay.CloseForShortcutSetup();
+            ShowShortcutSetup(null);
+            if (!disposed && !overlay.Visible)
+            {
+                ShowSwitcher(true);
+            }
+        }
+
         private void ShowShortcutSetup(string initialStatus)
         {
             if (shortcutSetupVisible)
             {
+                if (shortcutSetupForm != null && !shortcutSetupForm.ContainsFocus)
+                {
+                    shortcutSetupForm.Activate();
+                    NativeMethods.ActivateForegroundWindow(shortcutSetupForm.Handle);
+                }
+
                 return;
             }
 
@@ -363,13 +432,21 @@ namespace VerticalAppSwitcher
                     selectedShortcut,
                     initialStatus,
                     appIcon,
-                    ApplyShortcut))
+                    ApplyShortcut,
+                    hotKey.CheckShortcut))
                 {
+                    shortcutSetupForm = form;
+                    form.Shown += delegate
+                    {
+                        form.Activate();
+                        NativeMethods.ActivateForegroundWindow(form.Handle);
+                    };
                     form.ShowDialog();
                 }
             }
             finally
             {
+                shortcutSetupForm = null;
                 shortcutSetupVisible = false;
             }
         }
@@ -431,6 +508,7 @@ namespace VerticalAppSwitcher
                 ?? ShortcutDefinition.Default;
             openItem.Text = "Open switcher\t" + shortcut.DisplayText;
             trayIcon.Text = "Vertical App Switcher - " + shortcut.DisplayText;
+            overlay.SetInvocationShortcut(shortcut.DisplayText);
         }
 
         private void ShowSwitcher()
@@ -440,8 +518,10 @@ namespace VerticalAppSwitcher
 
         private void ShowSwitcher(bool protectInitialVisibility)
         {
-            AppWindowCollection windows = stateStore.Compose(
-                WindowCatalog.GetSwitchableWindows());
+            AppWindowCollection activeWindows =
+                WindowCatalog.GetSwitchableWindows();
+            closedAppTracker.ObserveWindows(activeWindows);
+            AppWindowCollection windows = stateStore.Compose(activeWindows);
             if (windows.Count == 0)
             {
                 windows.Dispose();
@@ -519,10 +599,20 @@ namespace VerticalAppSwitcher
             }
         }
 
-        private void OnCloseRequested(AppWindow window)
+        private void OnCloseRequested(
+            AppWindow window,
+            CloseRequestSource source)
         {
             if (!window.IsOpen)
             {
+                if (source == CloseRequestSource.KeyboardD
+                    || source == CloseRequestSource.KeyboardC
+                    || source == CloseRequestSource.ControllerX)
+                {
+                    overlay.SetActionStatus("This app is already closed.");
+                    return;
+                }
+
                 if (window.IsRecent)
                 {
                     try
@@ -556,33 +646,17 @@ namespace VerticalAppSwitcher
                 return;
             }
 
-            string closeKey = GetCloseKey(window);
-            if (string.Equals(
-                    pendingCloseKey,
-                    closeKey,
-                    StringComparison.Ordinal)
-                && DateTime.UtcNow <= pendingCloseUntilUtc)
-            {
-                ForceStop(window);
-                return;
-            }
-
+            closedAppTracker.ObserveWindow(window);
             string error;
             if (!window.RequestClose(out error))
             {
-                pendingCloseKey = closeKey;
-                pendingCloseUntilUtc = DateTime.UtcNow.AddSeconds(15);
                 DiagnosticLog.Write(error);
-                overlay.SetActionStatus(
-                    "Normal close blocked. Press X / Delete again to force stop.");
+                overlay.SetActionStatus("Normal window close blocked.");
                 ShowNotification("Could not close app", error, ToolTipIcon.Warning);
                 return;
             }
 
-            pendingCloseKey = closeKey;
-            pendingCloseUntilUtc = DateTime.UtcNow.AddSeconds(15);
-            overlay.SetActionStatus(
-                "Close requested. Press X / Delete again to force stop.");
+            overlay.SetActionStatus("Window close requested.");
         }
 
         private void OnForceStopRequested(AppWindow window)
@@ -593,13 +667,28 @@ namespace VerticalAppSwitcher
                 return;
             }
 
-            DialogResult result = MessageBox.Show(
-                "Force-stop \"" + window.Title
-                + "\"?\r\n\r\nUnsaved work in this app will be lost.",
-                "Vertical App Switcher",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning,
-                MessageBoxDefaultButton.Button2);
+            DialogResult result;
+            forceStopConfirmationVisible = true;
+            overlay.SetConfirmationVisible(true);
+            OnOverlayVisibilityChanged(overlay, EventArgs.Empty);
+            try
+            {
+                result = MessageBox.Show(
+                    overlay,
+                    "Force-stop \"" + window.Title
+                    + "\"?\r\n\r\nUnsaved work in this app will be lost.",
+                    "Vertical App Switcher",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2);
+            }
+            finally
+            {
+                forceStopConfirmationVisible = false;
+                overlay.SetConfirmationVisible(false);
+                OnOverlayVisibilityChanged(overlay, EventArgs.Empty);
+            }
+
             if (result == DialogResult.Yes)
             {
                 ForceStop(window);
@@ -608,6 +697,7 @@ namespace VerticalAppSwitcher
 
         private void ForceStop(AppWindow window)
         {
+            closedAppTracker.ObserveWindow(window);
             string error;
             if (!window.ForceStop(out error))
             {
@@ -615,19 +705,7 @@ namespace VerticalAppSwitcher
                 return;
             }
 
-            pendingCloseKey = null;
-            pendingCloseUntilUtc = DateTime.MinValue;
             overlay.SetActionStatus("Application force-stopped.");
-        }
-
-        private static string GetCloseKey(AppWindow window)
-        {
-            return window.Handle != IntPtr.Zero
-                ? "window:" + window.Handle.ToInt64()
-                : "process:"
-                    + window.ProcessId
-                    + ":"
-                    + window.IdentityKey;
         }
 
         private void OnClosedAppTrackerError(string message)
@@ -710,9 +788,11 @@ namespace VerticalAppSwitcher
             overlay.PinToggleRequested -= OnPinToggleRequested;
             overlay.CloseRequested -= OnCloseRequested;
             overlay.ForceStopRequested -= OnForceStopRequested;
+            overlay.ShortcutSetupRequested -= OnShortcutSetupRequested;
             closedAppTracker.Error -= OnClosedAppTrackerError;
             closedAppTracker.WindowsClosed -= OnWindowsClosed;
             closedAppTracker.Dispose();
+            ForegroundWindowOrder.Stop();
             controllerNavigation.NavigationRequested -=
                 OnControllerNavigationRequested;
             controllerNavigation.Error -= OnControllerNavigationError;
@@ -735,6 +815,11 @@ namespace VerticalAppSwitcher
         private const int HomeKeyId = 8;
         private const int EndKeyId = 9;
         private const int ShiftedHotKeyId = 10;
+        private const int CloseDKeyId = 11;
+        private const int LeftKeyId = 12;
+        private const int RightKeyId = 13;
+        private const int ShortcutProbeKeyId = 14;
+        private const int CloseKeyId = 15;
         private const string WindowCaption = "VerticalAppSwitcherHotKey";
         private readonly Action pressed;
         private readonly Action showRequested;
@@ -760,6 +845,56 @@ namespace VerticalAppSwitcher
         public ShortcutDefinition CurrentShortcut
         {
             get { return currentShortcut; }
+        }
+
+        public string CheckShortcut(ShortcutDefinition shortcut)
+        {
+            if (shortcut == null)
+            {
+                return "Choose a shortcut to test.";
+            }
+
+            if (currentShortcut != null
+                && currentShortcut.Modifiers == shortcut.Modifiers
+                && currentShortcut.VirtualKey == shortcut.VirtualKey)
+            {
+                return null;
+            }
+
+            if (currentShortcut != null
+                && shiftedRegistered
+                && currentShortcut.RegisterShiftedAlias
+                && shortcut.Modifiers
+                    == (currentShortcut.Modifiers | NativeMethods.ModShift)
+                && shortcut.VirtualKey == currentShortcut.VirtualKey)
+            {
+                return null;
+            }
+
+            if (!NativeMethods.RegisterHotKey(
+                    Handle,
+                    ShortcutProbeKeyId,
+                    shortcut.Modifiers,
+                    shortcut.VirtualKey))
+            {
+                int nativeError =
+                    System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+                return shortcut.DisplayText
+                    + " is unavailable. Another application may already use it. "
+                    + new Win32Exception(nativeError).Message;
+            }
+
+            if (!NativeMethods.UnregisterHotKey(Handle, ShortcutProbeKeyId))
+            {
+                int nativeError =
+                    System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+                string error = "Could not release the shortcut test: "
+                    + new Win32Exception(nativeError).Message;
+                DiagnosticLog.Write(error);
+                return error;
+            }
+
+            return null;
         }
 
         public bool TrySetShortcut(
@@ -843,6 +978,10 @@ namespace VerticalAppSwitcher
                 RegisterNavigationKey(PinKeyId, NativeMethods.VirtualKeyP);
                 RegisterNavigationKey(HomeKeyId, NativeMethods.VirtualKeyHome);
                 RegisterNavigationKey(EndKeyId, NativeMethods.VirtualKeyEnd);
+                RegisterNavigationKey(CloseDKeyId, (uint)Keys.D, NativeMethods.ModNoRepeat);
+                RegisterNavigationKey(CloseKeyId, (uint)Keys.C, NativeMethods.ModNoRepeat);
+                RegisterNavigationKey(LeftKeyId, (uint)Keys.Left);
+                RegisterNavigationKey(RightKeyId, (uint)Keys.Right);
                 navigationRegistered = true;
             }
             catch (Win32Exception)
@@ -921,6 +1060,18 @@ namespace VerticalAppSwitcher
                     case EndKeyId:
                         navigationPressed(Keys.End);
                         break;
+                    case CloseDKeyId:
+                        navigationPressed(Keys.D);
+                        break;
+                    case CloseKeyId:
+                        navigationPressed(Keys.C);
+                        break;
+                    case LeftKeyId:
+                        navigationPressed(Keys.Left);
+                        break;
+                    case RightKeyId:
+                        navigationPressed(Keys.Right);
+                        break;
                 }
             }
             else if (message.Msg == NativeMethods.WmShowSwitcher)
@@ -936,9 +1087,12 @@ namespace VerticalAppSwitcher
             base.WndProc(ref message);
         }
 
-        private void RegisterNavigationKey(int id, uint virtualKey)
+        private void RegisterNavigationKey(
+            int id,
+            uint virtualKey,
+            uint modifiers = 0)
         {
-            if (!NativeMethods.RegisterHotKey(Handle, id, 0, virtualKey))
+            if (!NativeMethods.RegisterHotKey(Handle, id, modifiers, virtualKey))
             {
                 throw new Win32Exception(
                     System.Runtime.InteropServices.Marshal.GetLastWin32Error(),
@@ -1030,6 +1184,10 @@ namespace VerticalAppSwitcher
             UnregisterNavigationKey(PinKeyId);
             UnregisterNavigationKey(HomeKeyId);
             UnregisterNavigationKey(EndKeyId);
+            UnregisterNavigationKey(CloseDKeyId);
+            UnregisterNavigationKey(CloseKeyId);
+            UnregisterNavigationKey(LeftKeyId);
+            UnregisterNavigationKey(RightKeyId);
             navigationRegistered = false;
         }
 
