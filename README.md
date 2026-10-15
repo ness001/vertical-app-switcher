@@ -71,8 +71,9 @@ organization's security policy if a warning appears.
 
 For build checks, use the artifacts on the
 [CI workflow](https://github.com/ness001/vertical-app-switcher/actions/workflows/ci.yml).
-These are not published releases. See the [release guide](docs/RELEASING.md)
-for package checks and release steps.
+These are not published releases. Each push to `main` also starts the Release
+workflow, which selects the next version and publishes after its checks pass.
+See the [release guide](docs/RELEASING.md) for version rules and package checks.
 
 ### Build from source
 
