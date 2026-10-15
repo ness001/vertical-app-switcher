@@ -50,7 +50,7 @@ jobs:
       version: ${{ needs.validate.outputs.version }}
 
   release:
-    name: Create draft release
+    name: Publish release
     needs: [validate, build]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -64,7 +64,7 @@ jobs:
           merge-multiple: true
           path: release
 
-      - name: Verify assets and create draft
+      - name: Verify assets and publish release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -84,9 +84,17 @@ jobs:
               }
               $assets += $archive, $checksum
           }
+          $notes = @'
+          ## Install
+
+          Download and extract the ZIP for your Windows architecture, then run VerticalAppSwitcher.exe.
+          Requires Windows 10 or 11 and the matching [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
+          Keep LICENSE and NOTICE with the executable. Executables are not code-signed; follow your organization's security policy.
+          Each ZIP has a SHA-256 checksum file for integrity checks.
+          '@
           $arguments = @(
               'release', 'create', $env:RELEASE_TAG,
-              '--verify-tag', '--draft', '--generate-notes',
+              '--verify-tag', '--generate-notes', '--notes', $notes,
               '--title', "Vertical App Switcher $env:RELEASE_TAG"
           )
           if ($env:PRERELEASE -eq 'true') {
@@ -94,5 +102,5 @@ jobs:
           }
           & gh @arguments @assets
           if ($LASTEXITCODE -ne 0) {
-              throw 'Could not create the draft release. Existing releases are not overwritten.'
+              throw 'Could not publish the release. Check GitHub Releases before retrying; existing releases are not overwritten.'
           }
