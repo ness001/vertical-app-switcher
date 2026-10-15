@@ -11,7 +11,9 @@ namespace VerticalAppSwitcher
         Activate,
         Cancel,
         Close,
-        TogglePin
+        TogglePin,
+        PreviousTab,
+        NextTab
     }
 
     internal sealed class XInputNavigationService : IDisposable
@@ -24,6 +26,8 @@ namespace VerticalAppSwitcher
 
         private const ushort DPadUp = 0x0001;
         private const ushort DPadDown = 0x0002;
+        private const ushort DPadLeft = 0x0004;
+        private const ushort DPadRight = 0x0008;
         private const ushort ButtonA = 0x1000;
         private const ushort ButtonB = 0x2000;
         private const ushort ButtonX = 0x4000;
@@ -144,7 +148,7 @@ namespace VerticalAppSwitcher
                 actionButtons & ~previousActionButtons[index]);
             previousActionButtons[index] = actionButtons;
 
-            ushort direction = GetVerticalDirection(gamepad);
+            ushort direction = GetDirection(gamepad);
             if (!enabled)
             {
                 previousDirections[index] = direction;
@@ -154,14 +158,7 @@ namespace VerticalAppSwitcher
 
             if (direction != previousDirections[index])
             {
-                if (direction == DPadUp)
-                {
-                    RaiseNavigation(ControllerNavigationAction.Previous);
-                }
-                else if (direction == DPadDown)
-                {
-                    RaiseNavigation(ControllerNavigationAction.Next);
-                }
+                RaiseDirection(direction);
 
                 nextRepeatUtc[index] = direction == 0
                     ? DateTime.MaxValue
@@ -169,10 +166,7 @@ namespace VerticalAppSwitcher
             }
             else if (direction != 0 && nowUtc >= nextRepeatUtc[index])
             {
-                RaiseNavigation(
-                    direction == DPadUp
-                        ? ControllerNavigationAction.Previous
-                        : ControllerNavigationAction.Next);
+                RaiseDirection(direction);
                 nextRepeatUtc[index] =
                     nowUtc.AddMilliseconds(RepeatDelayMilliseconds);
             }
@@ -200,19 +194,50 @@ namespace VerticalAppSwitcher
             }
         }
 
-        private static ushort GetVerticalDirection(XInputGamepad gamepad)
+        private static ushort GetDirection(XInputGamepad gamepad)
         {
-            bool up = (gamepad.Buttons & DPadUp) != 0
-                || gamepad.ThumbLeftY > ThumbstickThreshold;
-            bool down = (gamepad.Buttons & DPadDown) != 0
-                || gamepad.ThumbLeftY < -ThumbstickThreshold;
-
-            if (up == down)
+            ushort dpad = (ushort)(
+                gamepad.Buttons & (DPadUp | DPadDown | DPadLeft | DPadRight));
+            if (dpad != 0)
             {
-                return 0;
+                return dpad == DPadUp || dpad == DPadDown
+                    || dpad == DPadLeft || dpad == DPadRight
+                    ? dpad
+                    : (ushort)0;
             }
 
-            return up ? DPadUp : DPadDown;
+            int horizontal = Math.Abs((int)gamepad.ThumbLeftX);
+            int vertical = Math.Abs((int)gamepad.ThumbLeftY);
+            if (horizontal > ThumbstickThreshold && horizontal > vertical)
+            {
+                return gamepad.ThumbLeftX < 0 ? DPadLeft : DPadRight;
+            }
+
+            if (vertical > ThumbstickThreshold && vertical > horizontal)
+            {
+                return gamepad.ThumbLeftY > 0 ? DPadUp : DPadDown;
+            }
+
+            return 0;
+        }
+
+        private void RaiseDirection(ushort direction)
+        {
+            switch (direction)
+            {
+                case DPadUp:
+                    RaiseNavigation(ControllerNavigationAction.Previous);
+                    break;
+                case DPadDown:
+                    RaiseNavigation(ControllerNavigationAction.Next);
+                    break;
+                case DPadLeft:
+                    RaiseNavigation(ControllerNavigationAction.PreviousTab);
+                    break;
+                case DPadRight:
+                    RaiseNavigation(ControllerNavigationAction.NextTab);
+                    break;
+            }
         }
 
         private void ResetController(int index)

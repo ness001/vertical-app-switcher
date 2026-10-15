@@ -15,11 +15,16 @@ namespace VerticalAppSwitcher
         private readonly SwitcherStateData state;
 
         public AppStateStore()
-        {
-            string directory = Path.Combine(
+            : this(Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "VerticalAppSwitcher");
-            statePath = Path.Combine(directory, "state.json");
+                "VerticalAppSwitcher",
+                "state.json"))
+        {
+        }
+
+        internal AppStateStore(string statePath)
+        {
+            this.statePath = statePath;
             state = LoadState();
         }
 
@@ -28,40 +33,19 @@ namespace VerticalAppSwitcher
             List<AppWindow> active = activeWindows.Detach();
             activeWindows.Dispose();
 
-            var remaining = new List<AppWindow>(active);
-            var composed = new List<AppWindow>();
+            var composed = new List<AppWindow>(active);
             var representedIdentities = new HashSet<string>(
                 StringComparer.OrdinalIgnoreCase);
 
-            foreach (StoredAppRecord pin in state.PinnedApps)
+            foreach (AppWindow window in active)
             {
-                bool foundOpenWindow = false;
-                for (int index = 0; index < remaining.Count;)
+                window.PinOrder = FindByIdentity(state.PinnedApps, window.IdentityKey);
+                window.IsPinned = window.PinOrder >= 0;
+                if (!window.IsPinned)
                 {
-                    AppWindow window = remaining[index];
-                    if (!IdentitiesEqual(window.IdentityKey, pin.IdentityKey))
-                    {
-                        index++;
-                        continue;
-                    }
-
-                    window.IsPinned = true;
-                    composed.Add(window);
-                    remaining.RemoveAt(index);
-                    foundOpenWindow = true;
+                    window.PinOrder = int.MaxValue;
                 }
 
-                if (!foundOpenWindow)
-                {
-                    composed.Add(CreateStoredWindow(pin, true, false));
-                }
-
-                representedIdentities.Add(pin.IdentityKey);
-            }
-
-            foreach (AppWindow window in remaining)
-            {
-                composed.Add(window);
                 if (!string.IsNullOrEmpty(window.IdentityKey))
                 {
                     representedIdentities.Add(window.IdentityKey);
@@ -76,8 +60,23 @@ namespace VerticalAppSwitcher
                     continue;
                 }
 
-                composed.Add(CreateStoredWindow(recent, false, true));
+                int pinOrder = FindByIdentity(state.PinnedApps, recent.IdentityKey);
+                AppWindow window = CreateStoredWindow(recent, pinOrder >= 0, true);
+                window.PinOrder = pinOrder >= 0 ? pinOrder : int.MaxValue;
+                composed.Add(window);
                 representedIdentities.Add(recent.IdentityKey);
+            }
+
+            for (int index = 0; index < state.PinnedApps.Count; index++)
+            {
+                StoredAppRecord pin = state.PinnedApps[index];
+                if (!representedIdentities.Contains(pin.IdentityKey))
+                {
+                    AppWindow window = CreateStoredWindow(pin, true, false);
+                    window.PinOrder = index;
+                    composed.Add(window);
+                    representedIdentities.Add(pin.IdentityKey);
+                }
             }
 
             return new AppWindowCollection(composed);
@@ -133,10 +132,14 @@ namespace VerticalAppSwitcher
             IList<WindowSnapshot> closedWindows)
         {
             bool changed = false;
+            var previousRecents = new List<StoredAppRecord>(state.RecentApps);
             var accepted = new List<WindowSnapshot>();
+            var acceptedIdentities = new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
             foreach (WindowSnapshot window in closedWindows)
             {
-                if (!CanRelaunch(window.ExecutablePath))
+                if (!CanRelaunch(window)
+                    || !acceptedIdentities.Add(window.IdentityKey))
                 {
                     continue;
                 }
@@ -162,7 +165,15 @@ namespace VerticalAppSwitcher
 
             if (changed)
             {
-                SaveState();
+                try
+                {
+                    SaveState();
+                }
+                catch
+                {
+                    state.RecentApps = previousRecents;
+                    throw;
+                }
             }
 
             return accepted;
@@ -270,18 +281,45 @@ namespace VerticalAppSwitcher
             };
         }
 
-        private static bool CanRelaunch(string executablePath)
+        private static bool CanRelaunch(WindowSnapshot window)
         {
-            if (string.IsNullOrEmpty(executablePath)
-                || !File.Exists(executablePath))
+            if (window == null
+                || window.ProcessId == 0
+                || window.ProcessId == (uint)Environment.ProcessId
+                || string.IsNullOrEmpty(window.IdentityKey)
+                || !File.Exists(window.ExecutablePath))
             {
                 return false;
             }
 
-            return !string.Equals(
-                Path.GetFileName(executablePath),
-                "ApplicationFrameHost.exe",
-                StringComparison.OrdinalIgnoreCase);
+            string executableName = Path.GetFileName(window.ExecutablePath);
+            if (string.Equals(
+                    executableName,
+                    "explorer.exe",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return !string.IsNullOrEmpty(window.LaunchTarget);
+            }
+
+            switch (executableName.ToLowerInvariant())
+            {
+                case "applicationframehost.exe":
+                case "conhost.exe":
+                case "dllhost.exe":
+                case "rundll32.exe":
+                case "runtimebroker.exe":
+                case "svchost.exe":
+                case "shellexperiencehost.exe":
+                case "startmenuexperiencehost.exe":
+                case "searchhost.exe":
+                case "searchapp.exe":
+                case "textinputhost.exe":
+                case "lockapp.exe":
+                case "systemsettings.exe":
+                    return false;
+                default:
+                    return true;
+            }
         }
 
         private static int FindByIdentity(
@@ -332,7 +370,6 @@ namespace VerticalAppSwitcher
         private readonly Timer pollTimer;
         private Dictionary<IntPtr, WindowSnapshot> knownWindows =
             new Dictionary<IntPtr, WindowSnapshot>();
-        private bool initialized;
         private bool disposed;
 
         public ClosedAppTracker(AppStateStore stateStore)
@@ -357,6 +394,31 @@ namespace VerticalAppSwitcher
 
             Poll();
             pollTimer.Start();
+        }
+
+        public void ObserveWindows(IEnumerable<AppWindow> windows)
+        {
+            foreach (AppWindow window in windows)
+            {
+                ObserveWindow(window);
+            }
+        }
+
+        public void ObserveWindow(AppWindow window)
+        {
+            if (disposed
+                || window == null
+                || window.ProcessId == 0
+                || window.ProcessId == (uint)Environment.ProcessId
+                || (window.Handle == IntPtr.Zero && !window.IsTray))
+            {
+                return;
+            }
+
+            // Displayed rows capture process identity once, not on every catalog poll.
+            window.CaptureProcessIdentity();
+            WindowSnapshot snapshot = WindowSnapshot.FromWindow(window);
+            knownWindows[snapshot.TrackingKey] = PreserveKnownIdentity(snapshot);
         }
 
         public void SetOverlayVisible(bool visible)
@@ -414,124 +476,173 @@ namespace VerticalAppSwitcher
 
         private void Poll()
         {
-            IList<WindowSnapshot> snapshots =
-                WindowCatalog.GetSwitchableWindowSnapshots();
+            UpdateSnapshots(WindowCatalog.GetSwitchableWindowSnapshots());
+        }
+
+        private void UpdateSnapshots(IList<WindowSnapshot> snapshots)
+        {
             var current = new Dictionary<IntPtr, WindowSnapshot>();
             var currentByIdentity =
                 new Dictionary<string, List<WindowSnapshot>>(
                 StringComparer.OrdinalIgnoreCase);
 
-            foreach (WindowSnapshot snapshot in snapshots)
+            foreach (WindowSnapshot captured in snapshots)
             {
+                WindowSnapshot snapshot = PreserveKnownIdentity(captured);
                 current[snapshot.TrackingKey] = snapshot;
-                if (!string.IsNullOrEmpty(snapshot.IdentityKey))
-                {
-                    List<WindowSnapshot> matchingIdentity;
-                    if (!currentByIdentity.TryGetValue(
-                            snapshot.IdentityKey,
-                            out matchingIdentity))
-                    {
-                        matchingIdentity = new List<WindowSnapshot>();
-                        currentByIdentity[snapshot.IdentityKey] =
-                            matchingIdentity;
-                    }
+                AddIdentitySnapshot(currentByIdentity, snapshot);
+            }
 
-                    matchingIdentity.Add(snapshot);
+            foreach (KeyValuePair<IntPtr, WindowSnapshot> previous in knownWindows)
+            {
+                WindowSnapshot snapshot = previous.Value;
+                if (current.ContainsKey(previous.Key) || !snapshot.IsOpen)
+                {
+                    continue;
+                }
+
+                bool hasReplacement = false;
+                List<WindowSnapshot> matchingIdentity;
+                if (!string.IsNullOrEmpty(snapshot.IdentityKey)
+                    && currentByIdentity.TryGetValue(
+                        snapshot.IdentityKey,
+                        out matchingIdentity))
+                {
+                    foreach (WindowSnapshot candidate in matchingIdentity)
+                    {
+                        if (snapshot.IsTray
+                            || (candidate.IsTray && candidate.ProcessId == snapshot.ProcessId))
+                        {
+                            hasReplacement = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!hasReplacement)
+                {
+                    // Hidden or temporarily cloaked windows can still close later.
+                    current[previous.Key] = snapshot;
+                    AddIdentitySnapshot(currentByIdentity, snapshot);
                 }
             }
 
-            if (initialized)
+            var closed = new List<WindowSnapshot>();
+            var replacements =
+                new Dictionary<WindowSnapshot, WindowSnapshot>();
+            var recentCandidates = new List<WindowSnapshot>();
+            var recentCandidateIdentities = new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<IntPtr, WindowSnapshot> previous in knownWindows)
             {
-                var closed = new List<WindowSnapshot>();
-                var replacements =
-                    new Dictionary<WindowSnapshot, WindowSnapshot>();
-                var recentCandidates = new List<WindowSnapshot>();
-                var recentCandidateIdentities = new HashSet<string>(
-                    StringComparer.OrdinalIgnoreCase);
-                foreach (KeyValuePair<IntPtr, WindowSnapshot> previous in knownWindows)
+                WindowSnapshot snapshot = previous.Value;
+                WindowSnapshot currentSnapshot;
+                bool sameWindowIdentity =
+                    current.TryGetValue(previous.Key, out currentSnapshot)
+                    && snapshot.ProcessId == currentSnapshot.ProcessId
+                    && (!snapshot.ProcessStartTimeUtc.HasValue
+                        || !currentSnapshot.ProcessStartTimeUtc.HasValue
+                        || snapshot.ProcessStartTimeUtc == currentSnapshot.ProcessStartTimeUtc)
+                    && string.Equals(
+                        snapshot.IdentityKey,
+                        currentSnapshot.IdentityKey,
+                        StringComparison.OrdinalIgnoreCase);
+                if (sameWindowIdentity)
                 {
-                    WindowSnapshot snapshot = previous.Value;
-                    WindowSnapshot currentSnapshot;
-                    bool sameWindowIdentity =
-                        current.TryGetValue(previous.Key, out currentSnapshot)
-                        && string.Equals(
-                            snapshot.IdentityKey,
-                            currentSnapshot.IdentityKey,
-                            StringComparison.OrdinalIgnoreCase);
-                    if (sameWindowIdentity)
-                    {
-                        continue;
-                    }
-
-                    if (!current.ContainsKey(previous.Key)
-                        && snapshot.Handle != IntPtr.Zero
-                        && NativeMethods.IsWindow(snapshot.Handle))
-                    {
-                        continue;
-                    }
-
-                    closed.Add(snapshot);
-
-                    WindowSnapshot replacement = null;
-                    List<WindowSnapshot> matchingIdentity;
-                    if (!string.IsNullOrEmpty(snapshot.IdentityKey)
-                        && currentByIdentity.TryGetValue(
-                            snapshot.IdentityKey,
-                            out matchingIdentity))
-                    {
-                        foreach (WindowSnapshot candidate in matchingIdentity)
-                        {
-                            if (candidate.TrackingKey != snapshot.TrackingKey)
-                            {
-                                replacement = candidate;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (replacement != null)
-                    {
-                        replacements[snapshot] = replacement;
-                    }
-                    else if (!string.IsNullOrEmpty(snapshot.ExecutablePath)
-                        && recentCandidateIdentities.Add(snapshot.IdentityKey))
-                    {
-                        recentCandidates.Add(snapshot);
-                    }
+                    continue;
                 }
 
-                if (closed.Count > 0)
-                {
-                    IList<WindowSnapshot> accepted =
-                        stateStore.AddRecentlyClosed(recentCandidates);
-                    var acceptedSet = new HashSet<WindowSnapshot>(accepted);
-                    var updates = new List<ClosedWindowUpdate>(closed.Count);
-                    foreach (WindowSnapshot snapshot in closed)
-                    {
-                        WindowSnapshot replacement;
-                        replacements.TryGetValue(snapshot, out replacement);
-                        updates.Add(new ClosedWindowUpdate(
-                            snapshot,
-                            replacement,
-                            acceptedSet.Contains(snapshot)));
-                    }
+                closed.Add(snapshot);
 
-                    DiagnosticLog.Write(
-                        "Closed app list updated: "
-                        + closed.Count
-                        + " closed, "
-                        + accepted.Count
-                        + " recent.");
-                    Action<IList<ClosedWindowUpdate>> handler = WindowsClosed;
-                    if (handler != null)
-                    {
-                        handler(updates);
-                    }
+                WindowSnapshot replacement = null;
+                List<WindowSnapshot> matchingIdentity;
+                if (!string.IsNullOrEmpty(snapshot.IdentityKey)
+                    && currentByIdentity.TryGetValue(
+                        snapshot.IdentityKey,
+                        out matchingIdentity))
+                {
+                    replacement = matchingIdentity[0];
+                }
+
+                if (replacement != null)
+                {
+                    replacements[snapshot] = replacement;
+                }
+                else if (!string.IsNullOrEmpty(snapshot.IdentityKey)
+                    && recentCandidateIdentities.Add(snapshot.IdentityKey))
+                {
+                    recentCandidates.Add(snapshot);
+                }
+            }
+
+            if (closed.Count > 0)
+            {
+                IList<WindowSnapshot> accepted =
+                    stateStore.AddRecentlyClosed(recentCandidates);
+                var acceptedSet = new HashSet<WindowSnapshot>(accepted);
+                var updates = new List<ClosedWindowUpdate>(closed.Count);
+                foreach (WindowSnapshot snapshot in closed)
+                {
+                    WindowSnapshot replacement;
+                    replacements.TryGetValue(snapshot, out replacement);
+                    updates.Add(new ClosedWindowUpdate(
+                        snapshot,
+                        replacement,
+                        acceptedSet.Contains(snapshot)));
+                }
+
+                DiagnosticLog.Write(
+                    "Closed app list updated: "
+                    + closed.Count
+                    + " closed, "
+                    + accepted.Count
+                    + " recent.");
+                Action<IList<ClosedWindowUpdate>> handler = WindowsClosed;
+                if (handler != null)
+                {
+                    handler(updates);
                 }
             }
 
             knownWindows = current;
-            initialized = true;
+        }
+
+        private WindowSnapshot PreserveKnownIdentity(WindowSnapshot snapshot)
+        {
+            WindowSnapshot previous;
+            if (knownWindows.TryGetValue(snapshot.TrackingKey, out previous)
+                && previous.ProcessId == snapshot.ProcessId
+                && (!previous.ProcessStartTimeUtc.HasValue
+                    || !snapshot.ProcessStartTimeUtc.HasValue
+                    || previous.ProcessStartTimeUtc == snapshot.ProcessStartTimeUtc)
+                && string.IsNullOrEmpty(snapshot.IdentityKey)
+                && !string.IsNullOrEmpty(previous.IdentityKey))
+            {
+                return previous;
+            }
+
+            return snapshot;
+        }
+
+        private static void AddIdentitySnapshot(
+            Dictionary<string, List<WindowSnapshot>> snapshotsByIdentity,
+            WindowSnapshot snapshot)
+        {
+            if (string.IsNullOrEmpty(snapshot.IdentityKey))
+            {
+                return;
+            }
+
+            List<WindowSnapshot> matchingIdentity;
+            if (!snapshotsByIdentity.TryGetValue(
+                    snapshot.IdentityKey,
+                    out matchingIdentity))
+            {
+                matchingIdentity = new List<WindowSnapshot>();
+                snapshotsByIdentity[snapshot.IdentityKey] = matchingIdentity;
+            }
+
+            matchingIdentity.Add(snapshot);
         }
 
         private void RaiseError(string message)

@@ -8,11 +8,17 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 
 namespace VerticalAppSwitcher
 {
     internal sealed class AppWindow : IDisposable
     {
+        private const uint ProcessTerminate = 0x0001;
+        private const uint ProcessQueryLimitedInformation = 0x1000;
+        private const int ErrorInvalidParameter = 87;
+        private bool processIdentityCaptured;
+
         public AppWindow(
             IntPtr handle,
             uint processId,
@@ -31,8 +37,10 @@ namespace VerticalAppSwitcher
             LaunchTarget = launchTarget;
             Icon = icon;
             IsMinimized = minimized;
+            PinOrder = int.MaxValue;
         }
 
+        public DateTime? ProcessStartTimeUtc { get; private set; }
         public IntPtr Handle { get; private set; }
         public uint ProcessId { get; private set; }
         public string Title { get; private set; }
@@ -43,6 +51,7 @@ namespace VerticalAppSwitcher
         public bool IsMinimized { get; private set; }
         public bool IsOnAnotherDesktop { get; set; }
         public bool IsPinned { get; set; }
+        public int PinOrder { get; set; }
         public bool IsRecent { get; set; }
         public bool IsTray { get; set; }
         public string TrayTooltip { get; set; }
@@ -50,37 +59,83 @@ namespace VerticalAppSwitcher
 
         public bool IsOpen
         {
-            get
+            get { return IsWindowOpen(Handle, ProcessId, IsTray, ProcessStartTimeUtc); }
+        }
+
+        internal void CaptureProcessIdentity()
+        {
+            if (processIdentityCaptured || ProcessId == 0)
             {
-                if (Handle != IntPtr.Zero && NativeMethods.IsWindow(Handle))
-                {
-                    return true;
-                }
+                return;
+            }
 
-                if (!IsTray || ProcessId == 0)
+            processIdentityCaptured = true;
+            using (SafeProcessHandle process = NativeMethods.OpenProcess(
+                ProcessQueryLimitedInformation,
+                false,
+                ProcessId))
+            {
+                if (!process.IsInvalid)
                 {
-                    return false;
+                    ProcessStartTimeUtc = GetProcessStartTimeUtc(process);
                 }
+            }
+        }
 
-                try
+        private static DateTime? GetProcessStartTimeUtc(SafeProcessHandle process)
+        {
+            long created;
+            long exited;
+            long kernel;
+            long user;
+            return NativeMethods.GetProcessTimes(
+                process,
+                out created,
+                out exited,
+                out kernel,
+                out user)
+                ? DateTime.FromFileTimeUtc(created)
+                : (DateTime?)null;
+        }
+
+        internal static bool IsWindowOpen(
+            IntPtr handle,
+            uint processId,
+            bool isTray,
+            DateTime? processStartTimeUtc)
+        {
+            if (handle != IntPtr.Zero && NativeMethods.IsWindow(handle))
+            {
+                uint windowProcessId;
+                NativeMethods.GetWindowThreadProcessId(handle, out windowProcessId);
+                return processId != 0 && windowProcessId == processId;
+            }
+
+            if (!isTray || processId == 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                using (Process process = Process.GetProcessById((int)processId))
                 {
-                    using (Process process = Process.GetProcessById((int)ProcessId))
-                    {
-                        return !process.HasExited;
-                    }
+                    return !process.HasExited
+                        && (!processStartTimeUtc.HasValue
+                            || process.StartTime.ToUniversalTime() == processStartTimeUtc.Value);
                 }
-                catch (ArgumentException)
-                {
-                    return false;
-                }
-                catch (InvalidOperationException)
-                {
-                    return false;
-                }
-                catch (Win32Exception)
-                {
-                    return true;
-                }
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+            catch (Win32Exception)
+            {
+                return true;
             }
         }
 
@@ -158,6 +213,11 @@ namespace VerticalAppSwitcher
                 return false;
             }
 
+            if (!CanRequestClose(out error))
+            {
+                return false;
+            }
+
             if (!NativeMethods.PostMessage(
                     Handle,
                     NativeMethods.WmClose,
@@ -165,6 +225,11 @@ namespace VerticalAppSwitcher
                     IntPtr.Zero))
             {
                 int postError = Marshal.GetLastWin32Error();
+                if (!CanRequestClose(out error))
+                {
+                    return false;
+                }
+
                 UIntPtr ignoredResult;
                 IntPtr sendResult = NativeMethods.SendMessageTimeout(
                     Handle,
@@ -196,42 +261,113 @@ namespace VerticalAppSwitcher
         public bool ForceStop(out string error)
         {
             error = null;
-            if (ProcessId == 0)
+            if (ProcessId == 0 || ProcessId == (uint)Environment.ProcessId)
             {
                 error = "The selected application process is unavailable.";
                 return false;
             }
 
-            try
+            if (!ProcessStartTimeUtc.HasValue)
             {
-                using (Process process = Process.GetProcessById((int)ProcessId))
+                error = "The application process could not be verified. Reopen the switcher and try again.";
+                return false;
+            }
+
+            using (SafeProcessHandle process = NativeMethods.OpenProcess(
+                ProcessTerminate | ProcessQueryLimitedInformation,
+                false,
+                ProcessId))
+            {
+                if (process.IsInvalid)
                 {
-                    process.Kill();
+                    int errorCode = Marshal.GetLastWin32Error();
+                    if (errorCode == ErrorInvalidParameter)
+                    {
+                        return true;
+                    }
+
+                    error = "Could not stop \"" + Title + "\": "
+                        + new Win32Exception(errorCode).Message;
+                    return false;
+                }
+
+                if (!HasCurrentIdentity(process))
+                {
+                    error = "The selected app has changed or closed. Reopen the switcher and try again.";
+                    return false;
+                }
+
+                // Validate and terminate the same native process handle.
+                if (!NativeMethods.TerminateProcess(process, 1))
+                {
+                    error = "Could not stop \"" + Title + "\": "
+                        + new Win32Exception(Marshal.GetLastWin32Error()).Message;
+                    return false;
                 }
 
                 return true;
             }
-            catch (ArgumentException)
+        }
+
+        private bool CanRequestClose(out string error)
+        {
+            error = null;
+            using (SafeProcessHandle process = NativeMethods.OpenProcess(
+                ProcessQueryLimitedInformation,
+                false,
+                ProcessId))
+            {
+                if (process.IsInvalid || !HasCurrentIdentity(process))
+                {
+                    error = "The selected app has changed or could not be verified. Reopen the switcher and try again.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool HasCurrentIdentity(SafeProcessHandle process)
+        {
+            uint windowProcessId = ProcessId;
+            if (Handle != IntPtr.Zero)
+            {
+                NativeMethods.GetWindowThreadProcessId(Handle, out windowProcessId);
+            }
+
+            return ProcessStartTimeUtc.HasValue
+                && GetProcessStartTimeUtc(process) == ProcessStartTimeUtc
+                && windowProcessId == ProcessId
+                && (Handle != IntPtr.Zero || IsTray)
+                && HasCurrentLaunchTarget();
+        }
+
+        private bool HasCurrentLaunchTarget()
+        {
+            if (Handle == IntPtr.Zero
+                || (!string.Equals(ProcessName, "explorer", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(
+                        Path.GetFileName(ExecutablePath),
+                        "explorer.exe",
+                        StringComparison.OrdinalIgnoreCase)))
             {
                 return true;
             }
-            catch (InvalidOperationException exception)
-            {
-                error = "Could not stop \"" + Title + "\": " + exception.Message;
-                return false;
-            }
-            catch (Win32Exception exception)
-            {
-                error = "Could not stop \"" + Title + "\": " + exception.Message;
-                return false;
-            }
+
+            string currentTarget = ExplorerFolderResolver.GetCurrentFolderPath(Handle);
+            return !string.IsNullOrEmpty(LaunchTarget)
+                && !string.IsNullOrEmpty(currentTarget)
+                && string.Equals(LaunchTarget, currentTarget, StringComparison.OrdinalIgnoreCase);
         }
 
         public void MarkRecentlyClosed()
         {
             Handle = IntPtr.Zero;
             ProcessId = 0;
+            ProcessStartTimeUtc = null;
+            processIdentityCaptured = false;
             IsMinimized = false;
+            IsOnAnotherDesktop = false;
             IsRecent = true;
             IsTray = false;
             TrayTooltip = null;
@@ -241,6 +377,9 @@ namespace VerticalAppSwitcher
         {
             Handle = snapshot.Handle;
             ProcessId = snapshot.ProcessId;
+            ProcessStartTimeUtc = snapshot.ProcessStartTimeUtc;
+            processIdentityCaptured = ProcessStartTimeUtc.HasValue;
+            CaptureProcessIdentity();
             Title = snapshot.Title;
             ProcessName = snapshot.ProcessName;
             ExecutablePath = snapshot.ExecutablePath;
@@ -416,6 +555,18 @@ namespace VerticalAppSwitcher
             windows.Insert(index, window);
         }
 
+        public void MoveToFront(AppWindow window)
+        {
+            int index = windows.IndexOf(window);
+            if (index <= 0)
+            {
+                return;
+            }
+
+            windows.RemoveAt(index);
+            windows.Insert(0, window);
+        }
+
         public void ReorderPinnedFirst()
         {
             var reordered = new List<AppWindow>(windows.Count);
@@ -532,18 +683,7 @@ namespace VerticalAppSwitcher
                 false);
             foreach (AppWindow window in windows)
             {
-                snapshots.Add(new WindowSnapshot(
-                    window.Handle,
-                    window.ProcessId,
-                    window.Title,
-                    window.ProcessName,
-                    window.ExecutablePath,
-                    window.LaunchTarget,
-                    window.AppUserModelId,
-                    window.IsMinimized,
-                    window.IsOnAnotherDesktop,
-                    window.IsTray,
-                    window.TrayTooltip));
+                snapshots.Add(WindowSnapshot.FromWindow(window));
                 window.Dispose();
             }
 
@@ -832,7 +972,8 @@ namespace VerticalAppSwitcher
             bool isMinimized,
             bool isOnAnotherDesktop,
             bool isTray,
-            string trayTooltip)
+            string trayTooltip,
+            DateTime? processStartTimeUtc = null)
         {
             Handle = handle;
             ProcessId = processId;
@@ -845,8 +986,10 @@ namespace VerticalAppSwitcher
             IsOnAnotherDesktop = isOnAnotherDesktop;
             IsTray = isTray;
             TrayTooltip = trayTooltip;
+            ProcessStartTimeUtc = processStartTimeUtc;
         }
 
+        public DateTime? ProcessStartTimeUtc { get; private set; }
         public IntPtr Handle { get; private set; }
         public uint ProcessId { get; private set; }
         public string Title { get; private set; }
@@ -858,6 +1001,36 @@ namespace VerticalAppSwitcher
         public bool IsOnAnotherDesktop { get; private set; }
         public bool IsTray { get; private set; }
         public string TrayTooltip { get; private set; }
+
+        public bool IsOpen
+        {
+            get
+            {
+                return AppWindow.IsWindowOpen(
+                    Handle,
+                    ProcessId,
+                    IsTray,
+                    ProcessStartTimeUtc);
+            }
+        }
+
+        public static WindowSnapshot FromWindow(AppWindow window)
+        {
+            return new WindowSnapshot(
+                window.Handle,
+                window.ProcessId,
+                window.Title,
+                window.ProcessName,
+                window.ExecutablePath,
+                window.LaunchTarget,
+                window.AppUserModelId,
+                window.IsMinimized,
+                window.IsOnAnotherDesktop,
+                window.IsTray,
+                window.TrayTooltip,
+                window.ProcessStartTimeUtc);
+        }
+
         public string IdentityKey
         {
             get
@@ -900,6 +1073,11 @@ namespace VerticalAppSwitcher
             }
 
             return path;
+        }
+
+        public static string GetCurrentFolderPath(IntPtr handle)
+        {
+            return ResolveFolderPath(handle);
         }
 
         private static string ResolveFolderPath(IntPtr handle)
@@ -1316,6 +1494,27 @@ namespace VerticalAppSwitcher
             uint threadId,
             uint attachToThreadId,
             [MarshalAs(UnmanagedType.Bool)] bool attach);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        internal static extern SafeProcessHandle OpenProcess(
+            uint desiredAccess,
+            [MarshalAs(UnmanagedType.Bool)] bool inheritHandle,
+            uint processId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool GetProcessTimes(
+            SafeProcessHandle process,
+            out long creationTime,
+            out long exitTime,
+            out long kernelTime,
+            out long userTime);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool TerminateProcess(
+            SafeProcessHandle process,
+            uint exitCode);
 
         [DllImport("kernel32.dll")]
         internal static extern uint GetCurrentThreadId();

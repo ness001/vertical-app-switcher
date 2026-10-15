@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
+using System.Windows.Forms;
 
 namespace VerticalAppSwitcher
 {
@@ -96,7 +98,179 @@ namespace VerticalAppSwitcher
                 }
             }
 
+            if (string.IsNullOrEmpty(id) || !id.StartsWith("custom-", StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            string[] parts = id.Split('-');
+            uint modifiers;
+            uint virtualKey;
+            ShortcutDefinition customShortcut;
+            string error;
+            if (parts.Length == 3
+                && uint.TryParse(parts[1], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out modifiers)
+                && uint.TryParse(parts[2], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out virtualKey)
+                && TryCreate(modifiers, virtualKey, out customShortcut, out error))
+            {
+                return customShortcut;
+            }
+
             return null;
+        }
+
+        public static bool TryCreate(
+            uint modifiers,
+            uint virtualKey,
+            out ShortcutDefinition shortcut,
+            out string error)
+        {
+            shortcut = null;
+            error = null;
+            modifiers &= ~NativeMethods.ModNoRepeat;
+            uint supportedModifiers = NativeMethods.ModControl
+                | NativeMethods.ModAlt | NativeMethods.ModShift | NativeMethods.ModWin;
+            if ((modifiers & ~supportedModifiers) != 0)
+            {
+                error = "This modifier is not supported. Choose Ctrl, Alt, Shift, or Win.";
+                return false;
+            }
+
+            if ((modifiers & (NativeMethods.ModControl | NativeMethods.ModAlt | NativeMethods.ModWin)) == 0)
+            {
+                error = "Add Ctrl, Alt, or Win. Shift alone would change normal typing.";
+                return false;
+            }
+
+            string keyText = GetKeyDisplayText(virtualKey);
+            if (string.IsNullOrEmpty(keyText))
+            {
+                error = "Choose a letter, number, function key, or another key on the keyboard below.";
+                return false;
+            }
+
+            Keys key = (Keys)virtualKey;
+            bool alt = (modifiers & NativeMethods.ModAlt) != 0;
+            bool control = (modifiers & NativeMethods.ModControl) != 0;
+            bool windows = (modifiers & NativeMethods.ModWin) != 0;
+            if (key == Keys.F12
+                || (alt && key == Keys.Tab)
+                || (modifiers == NativeMethods.ModAlt && (key == Keys.Escape || key == Keys.F4 || key == Keys.Space))
+                || (control && key == Keys.Escape)
+                || (control && alt && key == Keys.Delete)
+                || (windows && (key == Keys.L || key == Keys.Tab || key == Keys.Space)))
+            {
+                error = "Windows uses this combination for a system action. Choose another shortcut.";
+                return false;
+            }
+
+            foreach (ShortcutDefinition preset in available)
+            {
+                if ((preset.Modifiers & ~NativeMethods.ModNoRepeat) == modifiers
+                    && preset.VirtualKey == virtualKey)
+                {
+                    shortcut = preset;
+                    return true;
+                }
+            }
+
+            string displayText = GetChordDisplayText(modifiers, virtualKey);
+            shortcut = new ShortcutDefinition(
+                "custom-" + modifiers.ToString("X", CultureInfo.InvariantCulture)
+                    + "-" + virtualKey.ToString("X2", CultureInfo.InvariantCulture),
+                displayText,
+                displayText,
+                modifiers,
+                virtualKey,
+                false);
+            return true;
+        }
+
+        public static string GetChordDisplayText(uint modifiers, uint virtualKey)
+        {
+            var parts = new List<string>(5);
+            if ((modifiers & NativeMethods.ModControl) != 0)
+            {
+                parts.Add("Ctrl");
+            }
+
+            if ((modifiers & NativeMethods.ModAlt) != 0)
+            {
+                parts.Add("Alt");
+            }
+
+            if ((modifiers & NativeMethods.ModShift) != 0)
+            {
+                parts.Add("Shift");
+            }
+
+            if ((modifiers & NativeMethods.ModWin) != 0)
+            {
+                parts.Add("Win");
+            }
+
+            string keyText = GetKeyDisplayText(virtualKey);
+            if (!string.IsNullOrEmpty(keyText))
+            {
+                parts.Add(keyText);
+            }
+
+            return string.Join(" + ", parts.ToArray());
+        }
+
+        public static string GetKeyDisplayText(uint virtualKey)
+        {
+            if ((virtualKey >= (uint)Keys.A && virtualKey <= (uint)Keys.Z)
+                || (virtualKey >= (uint)Keys.D0 && virtualKey <= (uint)Keys.D9))
+            {
+                return ((char)virtualKey).ToString();
+            }
+
+            if (virtualKey >= (uint)Keys.F1 && virtualKey <= (uint)Keys.F24)
+            {
+                return "F" + (virtualKey - (uint)Keys.F1 + 1).ToString(CultureInfo.InvariantCulture);
+            }
+
+            if (virtualKey >= (uint)Keys.NumPad0 && virtualKey <= (uint)Keys.NumPad9)
+            {
+                return "Num " + (virtualKey - (uint)Keys.NumPad0).ToString(CultureInfo.InvariantCulture);
+            }
+
+            switch ((Keys)virtualKey)
+            {
+                case Keys.Back: return "Backspace";
+                case Keys.Tab: return "Tab";
+                case Keys.Enter: return "Enter";
+                case Keys.Escape: return "Esc";
+                case Keys.Space: return "Space";
+                case Keys.Insert: return "Insert";
+                case Keys.Delete: return "Delete";
+                case Keys.Home: return "Home";
+                case Keys.End: return "End";
+                case Keys.PageUp: return "Page Up";
+                case Keys.PageDown: return "Page Down";
+                case Keys.Left: return "Left";
+                case Keys.Right: return "Right";
+                case Keys.Up: return "Up";
+                case Keys.Down: return "Down";
+                case Keys.Add: return "Num +";
+                case Keys.Subtract: return "Num -";
+                case Keys.Multiply: return "Num *";
+                case Keys.Divide: return "Num /";
+                case Keys.Decimal: return "Num .";
+                case Keys.Oem3: return "`";
+                case Keys.OemMinus: return "-";
+                case Keys.Oemplus: return "=";
+                case Keys.OemOpenBrackets: return "[";
+                case Keys.OemCloseBrackets: return "]";
+                case Keys.Oem5: return "\\";
+                case Keys.Oem1: return ";";
+                case Keys.Oem7: return "'";
+                case Keys.Oemcomma: return ",";
+                case Keys.OemPeriod: return ".";
+                case Keys.OemQuestion: return "/";
+                default: return null;
+            }
         }
 
         public override string ToString()
