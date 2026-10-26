@@ -1,0 +1,58 @@
+name: macOS packages
+
+on:
+  pull_request:
+    paths: ['macos/**', '.github/workflows/macos.yml', 'LICENSE', 'NOTICE', 'README.md']
+  push:
+    branches: [main]
+    paths: ['macos/**', '.github/workflows/macos.yml', 'LICENSE', 'NOTICE', 'README.md']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version without the leading v (blank uses Info.plist)
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      version:
+        description: Package version without the leading v
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Package macOS universal
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test core behavior
+        run: swift test --package-path macos
+      - name: Run model and platform regression checks
+        run: |
+          xcrun swiftc macos/Sources/VerticalAppSwitcher/{Appearance,State,GlobalShortcut,WindowCatalog,MacSpaces,MenuBarAppCatalog,ClosedWindowTracker,WindowFocusObserver,DiagnosticLog,SwitcherModel}.swift macos/Tests/SmokeChecks.swift -o "$RUNNER_TEMP/model-checks"
+          "$RUNNER_TEMP/model-checks"
+      - name: Run offline updater validation
+        run: |
+          xcrun swiftc macos/Sources/VerticalAppSwitcher/Updates.swift macos/Sources/VerticalAppSwitcher/UpdatesInstaller.swift macos/Tests/UpdateChecks.swift -o "$RUNNER_TEMP/update-checks"
+          "$RUNNER_TEMP/update-checks"
+      - name: Build versioned universal ZIP and checksum
+        env:
+          VERSION: ${{ inputs.version }}
+        run: bash macos/package.sh
+      - name: Verify package checksum
+        run: cd bin/release-macos && shasum -a 256 -c ./*.sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-macos-universal
+          path: |
+            bin/release-macos/*.zip
+            bin/release-macos/*.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

@@ -21,7 +21,7 @@ if ($Tag -cne "v$Version" -or $Commit -cnotmatch '^[0-9a-f]{40}$') {
 }
 
 $assets = @()
-foreach ($runtime in @('win-x64', 'win-arm64')) {
+foreach ($runtime in @('win-x64', 'win-arm64', 'osx-universal')) {
     $name = "VerticalAppSwitcher-$Version-$runtime.zip"
     $archive = Join-Path $AssetDirectory $name
     $checksum = "$archive.sha256"
@@ -76,6 +76,11 @@ Download and extract the ZIP for your Windows architecture, then run VerticalApp
 Requires Windows 10 or 11 and the matching [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
 Keep LICENSE and NOTICE with the executable. Executables are not code-signed; follow your organization's security policy.
 Each ZIP has a SHA-256 checksum file for integrity checks.
+
+For macOS 13 or newer, download and extract the osx-universal ZIP, then move Vertical App Switcher.app to Applications and launch it.
+The universal app supports Apple Silicon and Intel without .NET. Enable the app in System Settings > Privacy & Security > Accessibility to switch windows.
+macOS packages are ad-hoc signed, not Developer ID signed or notarized. Gatekeeper may block downloaded apps; follow your organization's security policy.
+In-app updates verify integrity but an ad-hoc signature does not establish publisher identity. Accessibility may need reapproval after updating.
 
 Version 0.1.0 users must install an update-enabled version manually once. Later versions can check for updates from the tray menu.
 '@

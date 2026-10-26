@@ -7,6 +7,10 @@ obj/
 *.suo
 *.user
 
+# Swift build output
+macos/.build/
+macos/.swiftpm/
+
 # Published binaries and symbols
 *.dll
 *.exe
