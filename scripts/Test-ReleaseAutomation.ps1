@@ -53,7 +53,7 @@ $directory = Join-Path ([IO.Path]::GetTempPath()) ('release-automation-' + [guid
 New-Item -ItemType Directory -Path $directory | Out-Null
 try {
     $names = @()
-    foreach ($runtime in @('win-x64', 'win-arm64')) {
+    foreach ($runtime in @('win-x64', 'win-arm64', 'osx-universal')) {
         $name = "VerticalAppSwitcher-0.2.0-$runtime.zip"
         $file = Join-Path $directory $name
         Set-Content -LiteralPath $file -Value 'checksum fixture'
@@ -73,7 +73,10 @@ try {
     Assert ($global:ReleaseTestPublished -contains $global:ReleaseTestCommit) 'Build commit missing.'
     Assert ($global:ReleaseTestPublished -notcontains '--draft') 'Release remained a draft.'
     Assert ($global:ReleaseTestPublished -notcontains '--verify-tag') 'New automatic tag could not be created.'
-    Write-Host 'PASS automatic release targets the checked commit'
+    foreach ($name in $names) {
+        Assert ($global:ReleaseTestPublished -contains (Join-Path $directory $name)) "Release asset missing: $name"
+    }
+    Write-Host 'PASS automatic release targets the checked commit with all six Windows/macOS assets'
 
     $release = @{
         tag_name = 'v0.2.0'; draft = $false; prerelease = $false
@@ -85,7 +88,7 @@ try {
     Assert ($null -eq $global:ReleaseTestPublished) 'Rerun attempted to replace an existing release.'
     Write-Host 'PASS existing complete release is left unchanged'
 
-    $release.assets = @($release.assets | Select-Object -First 3)
+    $release.assets = @($release.assets | Where-Object { $_.name -notlike '*osx-universal*' })
     $global:ReleaseTestPages = '[[' + ($release | ConvertTo-Json -Depth 5 -Compress) + ']]'
     $rejected = $false
     try { & $publishScript @parameters }
@@ -95,13 +98,18 @@ try {
     Write-Host 'PASS incomplete release requires review'
 
     $global:ReleaseTestPages = '[]'
-    Set-Content -LiteralPath (Join-Path $directory ($names[0] + '.sha256')) -Value 'bad checksum'
-    $rejected = $false
-    try { & $publishScript @parameters }
-    catch { $rejected = $_.Exception.Message -like 'Checksum mismatch*' }
-    Assert $rejected 'Bad checksum did not block publication.'
-    Assert ($null -eq $global:ReleaseTestPublished) 'Publication ran after a bad checksum.'
-    Write-Host 'PASS checksum failure blocks publication'
+    foreach ($name in @($names[0], $names[4])) {
+        $checksum = Join-Path $directory "$name.sha256"
+        $original = Get-Content -LiteralPath $checksum -Raw
+        Set-Content -LiteralPath $checksum -Value 'bad checksum'
+        $rejected = $false
+        try { & $publishScript @parameters }
+        catch { $rejected = $_.Exception.Message -like 'Checksum mismatch*' }
+        Assert $rejected "Bad checksum did not block publication: $name"
+        Assert ($null -eq $global:ReleaseTestPublished) 'Publication ran after a bad checksum.'
+        Set-Content -LiteralPath $checksum -Value $original -NoNewline
+    }
+    Write-Host 'PASS Windows and macOS checksum failures block publication'
 }
 finally {
     Remove-Item -LiteralPath $directory -Recurse -Force

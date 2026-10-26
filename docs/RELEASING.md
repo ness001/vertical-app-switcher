@@ -2,7 +2,7 @@
 
 Every push to `main`, including a merged pull request, starts the Release
 workflow. It selects a version, runs the update checks, builds Windows x64 and
-Arm64 packages, verifies checksums, and publishes the release automatically.
+Arm64 packages plus a universal macOS app, verifies checksums, and publishes the release automatically.
 Starting the desktop app or editing an uncommitted file does not publish code.
 
 ## Pipelines
@@ -11,6 +11,7 @@ Starting the desktop app or editing an uncommitted file does not publish code.
 | --- | --- | --- |
 | `ci.yml` — CI | Pull request to `main`, push to `main`, or manual run | Builds both architectures and saves check-build artifacts for 14 days. |
 | `build-packages.yml` — Build packages | Called by CI or Release | Runs update checks on x64, then builds both architecture packages. |
+| `macos.yml` — macOS packages | macOS pull requests/main changes, manual run, or Release call | Runs core/offline updater checks and builds universal macOS ZIP plus checksum. |
 | `release.yml` — Release | Push to `main`, version-tag push, or manual run | Selects the version, builds and checks packages, then publishes a GitHub Release. |
 
 CI uses `0.0.0-ci.<run-number>` for its check artifacts. Release builds use the
@@ -48,7 +49,7 @@ limit, raise the project minor or major version.
 GitHub creates its tag as part of release creation if needed. The same workflow
 publishes the assets; it does not depend on a token-created tag starting another
 workflow. A rerun accepts an existing published release only if its tag points
-to the same commit and all four assets are present. It does not replace assets.
+to the same commit and all six assets are present. It does not replace assets.
 
 ## Check a release
 
@@ -56,9 +57,31 @@ to the same commit and all four assets are present. It does not replace assets.
    for the merged commit and wait for all jobs to pass.
 2. Open [GitHub Releases](https://github.com/ness001/vertical-app-switcher/releases).
    Confirm that the version and generated notes match the intended change.
-3. Confirm the two ZIP files and their individual `.sha256` files are present.
-   Each ZIP contains `VerticalAppSwitcher.exe`, `LICENSE`, `NOTICE`, `README.txt`,
-   and `update.json` inside a versioned folder.
+3. Confirm the Windows x64/Arm64 and `osx-universal` ZIP files and their individual
+   `.sha256` files are present. Windows ZIPs contain `VerticalAppSwitcher.exe`,
+   `LICENSE`, `NOTICE`, `README.txt`, and `update.json` inside a versioned folder.
+   The macOS ZIP contains only `Vertical App Switcher.app`, with LICENSE/NOTICE
+   inside Contents/Resources. See [macOS build/update instructions](../macos/README.md).
+
+### Install the macOS download
+
+1. Download `VerticalAppSwitcher-<version>-osx-universal.zip` from the release.
+2. Extract it and move **Vertical App Switcher.app** to **Applications**.
+3. Launch the app, then enable it in **System Settings → Privacy & Security →
+   Accessibility**.
+
+The universal app requires macOS 13 or newer and supports Apple Silicon and Intel
+without .NET or developer tools. In-app updates need write access to its installed
+location; no administrator elevation is attempted.
+
+CI uses an ad-hoc signature, not a Developer ID certificate, and does not notarize
+packages. Gatekeeper may block a downloaded app. Follow organizational security
+policy; a checksum verifies integrity, not publisher identity. The persistent
+local development certificate used for rebuilds does not establish public trust.
+A Gatekeeper-trusted public distribution requires a Developer ID Application
+certificate and Apple notarization; these are not configured by this workflow.
+Do not describe these artifacts as notarized. Accessibility may need reapproval
+after an ad-hoc update.
 
 The release notes include installation instructions and the runtime requirement.
 Target PCs need Windows 10 or 11 and the matching
@@ -108,6 +131,19 @@ pwsh -NoProfile -File .\scripts\Publish-Release.ps1 `
 Packages and checksums are saved in `bin\release`. Use `-OutputDirectory <path>`
 for another folder. The script refuses to overwrite existing output. It does
 not replace or restart the normal app.
+
+On macOS, build a universal ZIP without replacing a running development app:
+
+```bash
+VERSION=0.2.0 bash macos/package.sh
+```
+
+The ZIP and checksum are saved in `bin/release-macos`; set `PACKAGE_OUTPUT_DIR`
+for another folder. Packaging defaults to ad-hoc signing even when a local
+persistent development certificate exists, and refuses to overwrite the same
+version's artifacts. `CODE_SIGN_IDENTITY` can explicitly select a Developer ID
+Application certificate already installed in the Keychain; notarization is still
+a separate distribution step.
 
 Compare a downloaded ZIP's hash with its checksum file:
 
