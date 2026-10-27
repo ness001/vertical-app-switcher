@@ -13,12 +13,14 @@ on **Windows and macOS**.
 [Updates and privacy](#updates-and-privacy) · [Documentation](#documentation)
 
 <p align="center">
-  <img src="docs/assets/macos-switcher.png" alt="Native macOS switcher showing Open, Pinned, Recent, Tray, and Desktops tabs, four sample windows, and keyboard controls." width="520"><br>
-  <sub>Actual macOS app, captured in isolated demo mode with sample entries.</sub>
+  <img src="docs/assets/macos-switcher.png" alt="Native macOS switcher showing three separate Terminal rows for frontend, backend, and tests, followed by Safari and Finder." width="520"><br>
+  <sub>Native macOS view, rendered in isolated demo mode: three Terminal windows, three separate rows.</sub>
 </p>
 
 ## Features
 
+- **Every window gets its own row.** Open and Desktops list individual windows:
+  three Terminal windows appear as three separate rows, not one grouped app entry.
 - **Five tabs for different app states.** Browse **Open**, **Pinned**,
   **Recent**, **Tray**, and **Desktops** in that order. Open includes minimized
   windows; Tray collects detected notification-area or menu-bar apps; Desktops
