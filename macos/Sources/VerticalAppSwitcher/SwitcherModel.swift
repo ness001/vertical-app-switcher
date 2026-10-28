@@ -50,15 +50,16 @@ final class SwitcherModel: ObservableObject {
         }
         if demo {
             trusted = true
-            let samples = [("Safari", "A little room for inspiration", "/Applications/Safari.app"),
-                           ("Notes", "Ideas for the week", "/System/Applications/Notes.app"),
-                           ("Finder", "Projects", "/System/Library/CoreServices/Finder.app"),
-                           ("Calendar", "Today", "/System/Applications/Calendar.app")]
+            let samples = [("Terminal", "Terminal — frontend", "/System/Applications/Utilities/Terminal.app"),
+                           ("Terminal", "Terminal — backend", "/System/Applications/Utilities/Terminal.app"),
+                           ("Terminal", "Terminal — tests", "/System/Applications/Utilities/Terminal.app"),
+                           ("Safari", "A little room for inspiration", "/Applications/Safari.app"),
+                           ("Finder", "Projects", "/System/Library/CoreServices/Finder.app")]
             windows = samples.enumerated().map { index, item in
                 WindowEntry(id: "demo-\(index)", app: SavedApp(path: item.2, name: item.0), pid: nil,
                             title: item.1, window: nil, minimized: index == 2, hidden: false)
             }
-            state = SavedState(pins: [windows[0].app, windows[2].app])
+            state = SavedState(pins: [windows[3].app, windows[4].app])
             selectedID = windows.first?.id
         }
     }

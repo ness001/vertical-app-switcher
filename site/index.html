@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Switch windows, reopen recent apps, and reach pinned apps from one vertical list on Windows and macOS.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#101114">
+  <title>Vertical App Switcher — Windows and macOS</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header wrap">
+    <a class="brand" href="#main">Vertical App Switcher</a>
+    <nav aria-label="Main navigation">
+      <a href="#features">Features</a>
+      <a href="#themes">Themes</a>
+      <a href="#shortcuts">Shortcuts</a>
+      <a class="nav-download" href="#install">Get the app <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="headline">
+      <div class="hero-copy wrap">
+        <p class="eyebrow">Windows &amp; macOS <span aria-hidden="true">·</span> Native apps</p>
+        <h1 id="headline">Switch windows, reopen recent apps,<br class="desktop-break"> and reach pinned apps<br class="desktop-break"> <span>from one vertical list.</span></h1>
+        <div class="downloads" aria-label="Download version 0.2.1">
+          <a class="button button-primary" href="https://github.com/ness001/vertical-app-switcher/releases/download/v0.2.1/VerticalAppSwitcher-0.2.1-osx-universal.zip">Download for macOS <span aria-hidden="true">↓</span></a>
+          <a class="button" href="https://github.com/ness001/vertical-app-switcher/releases/download/v0.2.1/VerticalAppSwitcher-0.2.1-win-x64.zip">Download for Windows <span aria-hidden="true">↓</span></a>
+        </div>
+        <p class="download-meta">macOS 13+ · Apple Silicon &amp; Intel <span class="meta-separator" aria-hidden="true">/</span> Windows 10 / 11 · x64 <a href="https://github.com/ness001/vertical-app-switcher/releases/download/v0.2.1/VerticalAppSwitcher-0.2.1-win-arm64.zip">or Arm64</a></p>
+        <p class="hero-note">v0.2.1 <span aria-hidden="true">·</span> <a href="#install">Installation &amp; requirements</a> <span aria-hidden="true">·</span> <a href="https://github.com/ness001/vertical-app-switcher/releases/tag/v0.2.1">Release notes &amp; checksums ↗</a></p>
+      </div>
+      <figure class="product-shot wrap">
+        <div class="product-stage">
+          <span class="stage-caption stage-caption-left" aria-hidden="true">A little more focus.<br>A little less looking.</span>
+          <img src="assets/macos-switcher.png" width="520" height="680" alt="Native macOS switcher showing three separate Terminal rows for frontend, backend, and tests, followed by Safari and Finder.">
+          <span class="stage-caption stage-caption-right" aria-hidden="true">Your windows.<br>One vertical list.</span>
+        </div>
+        <figcaption>Native macOS view · Rendered in isolated demo mode · Three Terminal windows, three rows</figcaption>
+      </figure>
+    </section>
+
+    <section class="section features wrap" id="features" aria-labelledby="features-title">
+      <div class="feature-overview">
+        <div class="section-heading">
+          <p class="eyebrow">A place for every app</p>
+          <h2 id="features-title">Five views.<br><span>One place to<br class="desktop-break"> return to.</span></h2>
+          <p class="section-intro">What’s open. What you’ve pinned. What you just closed. All within the same familiar list.</p>
+        </div>
+        <dl class="view-list">
+          <div><dt><span aria-hidden="true">01</span> Open</dt><dd>Your current windows, including minimized ones.</dd></div>
+          <div><dt><span aria-hidden="true">02</span> Pinned</dt><dd>Keep your go-to apps in a saved order. Switch to them or launch them.</dd></div>
+          <div><dt><span aria-hidden="true">03</span> Recent</dt><dd>Reopen recently closed apps, documents, and folders. Up to 12 entries, close at hand.</dd></div>
+          <div><dt><span aria-hidden="true">04</span> Tray</dt><dd>Reach detected notification-area or menu-bar apps.</dd></div>
+          <div><dt><span aria-hidden="true">05</span> Desktops</dt><dd>Find windows on other virtual desktops or Spaces.</dd></div>
+        </dl>
+      </div>
+      <article class="window-detail">
+        <figure class="detail-figure">
+          <div class="detail-stage">
+            <div class="detail-crop"><img src="assets/macos-switcher.png" width="520" height="680" loading="lazy" alt="Native macOS window list with three distinct Terminal rows: frontend selected, backend, and tests marked Minimized."></div>
+          </div>
+          <figcaption>A closer look · Three Terminal windows, three separate rows</figcaption>
+        </figure>
+        <div class="detail-copy">
+          <p class="eyebrow">Recognize it. Reach it.</p>
+          <h2>Every window.<br>Its own row.</h2>
+          <p>Open and Desktops list each window separately. Three Terminal windows get three rows, not one grouped app entry.</p>
+          <p>Window titles, app names, and minimized state keep the list easy to read. Your pins stay available after their windows close.</p>
+          <p>Search by app name or window title. Your query follows you between tabs.</p>
+          <a class="text-link" href="#shortcuts">Meet the controls <span aria-hidden="true">→</span></a>
+        </div>
+      </article>
+      <p class="platform-note">Recent restores tracked Explorer folders on Windows, or documents and folders exposed by their apps on macOS. macOS Desktops uses private Spaces interfaces; when membership is unavailable, windows stay in Open. <a href="https://github.com/ness001/vertical-app-switcher/blob/main/README.md#platform-details">Platform details ↗</a></p>
+    </section>
+
+    <section class="appearance-band" id="themes" aria-labelledby="themes-title">
+      <div class="wrap section">
+        <div class="section-heading centered">
+          <p class="eyebrow">Make it yours · macOS</p>
+          <h2 id="themes-title">A familiar list.<br><span>Your kind of atmosphere.</span></h2>
+          <p class="section-intro">Choose System, Light, Dark, or Midnight under Appearance in the menu-bar menu.</p>
+        </div>
+        <div class="theme-grid">
+          <article class="theme">
+            <div class="palette palette-system" aria-hidden="true"><i></i><i></i><i></i></div>
+            <h3>System</h3><p>Your macOS appearance<br>and system accent.</p>
+          </article>
+          <article class="theme">
+            <div class="palette palette-light" aria-hidden="true"><i></i><i></i><i></i></div>
+            <h3>Light</h3><p>A light appearance.<br>A violet accent.</p>
+          </article>
+          <article class="theme">
+            <div class="palette palette-dark" aria-hidden="true"><i></i><i></i><i></i></div>
+            <h3>Dark</h3><p>A dark appearance.<br>A soft purple accent.</p>
+          </article>
+          <article class="theme">
+            <div class="palette palette-midnight" aria-hidden="true"><i></i><i></i><i></i></div>
+            <h3>Midnight</h3><p>A deep blue tint.<br>An ice-blue accent.</p>
+          </article>
+        </div>
+        <p class="palette-note">Representative palettes, not app screenshots. Native material and system settings affect the actual appearance.</p>
+      </div>
+    </section>
+
+    <section class="section shortcuts wrap" id="shortcuts" aria-labelledby="shortcuts-title">
+      <div class="section-heading centered">
+        <p class="eyebrow">Stay on the keyboard</p>
+        <h2 id="shortcuts-title">One shortcut in.<br><span>Every move within reach.</span></h2>
+        <p class="section-intro">Choose your global shortcut in setup or from the tray / menu-bar menu. Here’s where you start.</p>
+      </div>
+      <div class="shortcut-defaults">
+        <div><span class="key-combo"><kbd>Control</kbd><span>+</span><kbd>`</kbd></span><p>macOS default <span>Open / dismiss</span></p></div>
+        <div><span class="key-combo"><kbd>Win</kbd><span>+</span><kbd>`</kbd></span><p>Windows default <span>Open / dismiss</span></p></div>
+      </div>
+      <div class="everyday-keys">
+        <div><span><kbd>←</kbd> <kbd>→</kbd></span><h3>Change views</h3><p>Move between the five tabs.</p></div>
+        <div><span><kbd>↑</kbd> <kbd>↓</kbd></span><h3>Find your window</h3><p>Select a row. Enter opens it.</p></div>
+        <div><span><kbd>S</kbd></span><h3>Search the list</h3><p>Filter by title or app name.</p></div>
+        <div><span><kbd>P</kbd></span><h3>Keep it pinned</h3><p>Pin or unpin the selected app.</p></div>
+        <div><span><kbd>D</kbd></span><h3>Close or clear</h3><p>Close a window or remove a closed Recent entry.</p></div>
+        <div><span><kbd>esc</kbd></span><h3>Back to your work</h3><p>Dismiss the switcher.</p></div>
+      </div>
+      <details class="full-controls">
+        <summary>Full keyboard &amp; controller reference <span aria-hidden="true">+</span></summary>
+        <div class="shortcut-grid">
+          <div>
+            <h3>Navigate &amp; open</h3>
+            <dl class="key-list">
+              <div><dt>Change tabs</dt><dd><kbd>←</kbd> <kbd>→</kbd></dd></div>
+              <div><dt>Select a row</dt><dd><kbd>↑</kbd> <kbd>↓</kbd> or mouse wheel</dd></div>
+              <div><dt>Next / previous row</dt><dd><kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd></dd></div>
+              <div><dt>First / last row</dt><dd><kbd>Home</kbd> / <kbd>End</kbd></dd></div>
+              <div><dt>Open selection</dt><dd><kbd>Enter</kbd> / <kbd>Space</kbd> or click</dd></div>
+              <div><dt>Open result 1–9</dt><dd><kbd>⌘</kbd> + <kbd>1…9</kbd> macOS<br><kbd>Ctrl</kbd> + <kbd>1…9</kbd> Windows</dd></div>
+              <div><dt>Dismiss</dt><dd><kbd>Escape</kbd> or global shortcut</dd></div>
+            </dl>
+          </div>
+          <div>
+            <h3>Search &amp; act</h3>
+            <dl class="key-list">
+              <div><dt>Focus search</dt><dd><kbd>S</kbd> or <kbd>⌘</kbd> + <kbd>F</kbd> on macOS</dd></div>
+              <div><dt>Return to matches</dt><dd><kbd>↑</kbd> / <kbd>↓</kbd> / <kbd>Tab</kbd></dd></div>
+              <div><dt>Pin / unpin</dt><dd><kbd>P</kbd></dd></div>
+              <div><dt>Close window / remove closed Recent entry</dt><dd><kbd>D</kbd></dd></div>
+              <div><dt>Remove closed Recent entry only</dt><dd><kbd>Delete</kbd></dd></div>
+              <div><dt>Quit selected app (macOS)</dt><dd><kbd>Q</kbd></dd></div>
+            </dl>
+            <p class="control-note">Q requests normal quit of the selected app, not the switcher. Apps handle their own save prompts.</p>
+          </div>
+        </div>
+        <div class="controls-footer">
+          <p>While editing search, letters are query text; Enter opens a match. Returning with arrows keeps the current match. Reopening the list clears search. Right-click a row for available actions.</p>
+          <p><strong>Windows controller support</strong> · Xbox / XInput: D-pad or left stick to navigate, A to open, B to dismiss, Y to pin, X to close or remove. A foreground game may receive the same input. macOS uses keyboard and mouse.</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="section install wrap" id="install" aria-labelledby="install-title">
+      <div class="section-heading">
+        <p class="eyebrow">Ready when you are</p>
+        <h2 id="install-title">Download. Set up.<br><span>Make your next move.</span></h2>
+      </div>
+      <div class="install-grid">
+        <article>
+          <h3>macOS <span class="muted">13 or newer</span></h3>
+          <p>One universal package for Apple Silicon and Intel. No .NET runtime or developer tools needed.</p>
+          <a class="text-link" href="https://github.com/ness001/vertical-app-switcher/releases/download/v0.2.1/VerticalAppSwitcher-0.2.1-osx-universal.zip">Download for macOS <span aria-hidden="true">↓</span></a>
+          <ol>
+            <li>Extract the ZIP and move <strong>Vertical App Switcher.app</strong> to <strong>Applications</strong>.</li>
+            <li>Open the app. Enable it in <strong>System Settings → Privacy &amp; Security → Accessibility</strong>.</li>
+            <li>Choose and save your shortcut in setup.</li>
+          </ol>
+          <p class="install-note">Packages are not notarized. Follow your organization’s security policy if macOS blocks opening the app.</p>
+          <a class="text-link" href="https://github.com/ness001/vertical-app-switcher/blob/main/macos/README.md">Read the macOS guide <span aria-hidden="true">↗</span></a>
+        </article>
+        <article>
+          <h3>Windows <span class="muted">10 / 11</span></h3>
+          <p>The small, framework-dependent EXE uses the separately installed .NET Desktop Runtime. Choose the package that matches your PC.</p>
+          <p class="install-downloads"><a class="text-link" href="https://github.com/ness001/vertical-app-switcher/releases/download/v0.2.1/VerticalAppSwitcher-0.2.1-win-x64.zip">Download x64 ↓</a><a class="text-link" href="https://github.com/ness001/vertical-app-switcher/releases/download/v0.2.1/VerticalAppSwitcher-0.2.1-win-arm64.zip">Download Arm64 ↓</a></p>
+          <ol>
+            <li>Extract the ZIP and run <strong>VerticalAppSwitcher.exe</strong>. Keep <strong>LICENSE</strong> and <strong>NOTICE</strong> with it.</li>
+            <li>If .NET is missing, select <strong>Download it now</strong> in the prompt to open Microsoft’s download page. Install the latest <a href="https://dotnet.microsoft.com/download/dotnet/10.0">.NET 10 Desktop Runtime</a> matching your package (x64 or Arm64), then run the EXE again. Choose <strong>Desktop Runtime</strong>, not just <strong>.NET Runtime</strong>.</li>
+            <li>Choose a shortcut and select <strong>Save shortcut</strong>.</li>
+          </ol>
+          <p class="install-note">Windows 11 does not include this runtime by default. Windows packages are unsigned; follow your organization’s security policy if a warning appears. Running the switcher needs no administrator access; installing the runtime system-wide requires administrator approval.</p>
+          <a class="text-link" href="https://github.com/ness001/vertical-app-switcher/blob/main/README.md#install">Read the Windows guide <span aria-hidden="true">↗</span></a>
+        </article>
+      </div>
+      <p class="first-success">Save your shortcut, open the list, and choose a window. Optional launch at login is available from the tray or menu-bar menu.</p>
+    </section>
+
+    <section class="resources wrap" aria-labelledby="resources-title">
+      <div><p class="eyebrow">Open source · GPL-3.0-only</p><h2 id="resources-title">Small app.<br><span>Open book.</span></h2><p>Platform behavior, updates, and local-data details.<br>It’s all in the documentation.</p></div>
+      <nav class="resource-links" aria-label="Project resources">
+        <a href="https://github.com/ness001/vertical-app-switcher#readme">Documentation <span aria-hidden="true">↗</span></a>
+        <a href="https://github.com/ness001/vertical-app-switcher/releases">All releases <span aria-hidden="true">↗</span></a>
+        <a href="https://github.com/ness001/vertical-app-switcher">Source code <span aria-hidden="true">↗</span></a>
+        <a href="https://github.com/ness001/vertical-app-switcher/blob/main/LICENSE">GPL-3.0-only license <span aria-hidden="true">↗</span></a>
+      </nav>
+    </section>
+  </main>
+  <footer class="site-footer wrap"><p>© 2026 ness001</p><a href="https://github.com/ness001/vertical-app-switcher/blob/main/NOTICE">Attribution &amp; notices</a></footer>
+</body>
+</html>
